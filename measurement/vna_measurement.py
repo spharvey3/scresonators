@@ -176,7 +176,7 @@ def _perform_initial_scan(hw, expt_path, result, freq_idx, power, att, fname, co
         "span": float(result.spans[freq_idx]) * 1.3,
         "npoints": 800,
         "power": power,
-        "bandwidth": 100, #result.config["bandwidth"],
+        "bandwidth": 1000, #result.config["bandwidth"],
         "averages": 1,
     }
 
@@ -185,11 +185,10 @@ def _perform_initial_scan(hw, expt_path, result, freq_idx, power, att, fname, co
     if type(hw) is not dict:
         import scresonators.measurement.vna_scan as vna_scan
         data = vna_scan.do_vna_scan(
-            hw, file_name, expt_path, scan_config, "S21", att=att, plot=False
+            hw, file_name, expt_path, scan_config, config['spar'], att=att, plot=False
         )
     else:
         config=copy.deepcopy(config)
-        scan_config["phase_inc"]=result.config["phase_inc"]
         config["phase_const"]=False
         scan_config['kappa']=np.nan
 
@@ -235,10 +234,11 @@ def do_rfsoc_scan(hw, file_name, expt_path, scan_config, config, att=0, plot=Fal
         gain=1
         vaunix_da.set_atten(config['attn_id'], config['attn_channel'], -scan_config['power'])
         import time
+        time.sleep(0.1)
         
     else:
         gain = 10**(scan_config['power']/20)
-    time.sleep(0.1)
+    
     if 'loop' not in config:
         config['loop'] = False
         config['phase_const']=False
@@ -258,8 +258,10 @@ def do_rfsoc_scan(hw, file_name, expt_path, scan_config, config, att=0, plot=Fal
                'center':scan_config['freq_center']/1e6-3,
                'expts':10,
                }
-    #s = meas.ResSpec(hw, qi=0, params=oth_par, save=False, display=False, analyze=False, progress=False)
-
+    s = meas.ResSpec(hw, qi=0, params=oth_par, save=False, display=False, analyze=False, progress=False)
+    # Otherwise the ADCs will saturate 
+    if scan_config['power']>=-20: 
+        params['length'] = np.min((params['length'],1000))
     if config['loop']: 
         exp = meas.ResSpec2D
         params['expts_count']=params['reps']
@@ -274,12 +276,12 @@ def do_rfsoc_scan(hw, file_name, expt_path, scan_config, config, att=0, plot=Fal
 
     rspec.data['freqs']=rspec.data['xpts']*1e6
 
-    #fix_phase = rspec.data['phases']-scan_config['phase_inc']*rspec.data['xpts']
     fix_phase = rspec.data['phases'] 
     data = copy.deepcopy(rspec.data)
     data['phases']= np.unwrap(fix_phase)-np.unwrap(fix_phase)[0]
     data['amps']=20*np.log10(data['amps'])
     rspec.data = data
+    rspec.cfg['power'] = scan_config['power']
     rspec.fname = os.path.join(expt_path, file_name)
     rspec.save_data()
     
@@ -309,20 +311,21 @@ def _perform_scan(hw, file_name, expt_path, scan_config, config, att):
     dict
         Dictionary containing the measurement data
     """
+    spar=config["spar"]
     if not config["type"]== "rfsoc":
         from scresonators.measurement.vna_scan import do_vna_scan, do_vna_scan_single_point, do_vna_scan_segments
 
         if config["type"] == "lin":
             return do_vna_scan(
-                hw, file_name, expt_path, scan_config, "S21", att=att, plot=False
+                hw, file_name, expt_path, scan_config, spar=spar, att=att, plot=False
             )
         elif config["type"] == "single":
             return do_vna_scan_single_point(
-                hw, file_name, expt_path, scan_config, "S21", plot=False
+                hw, file_name, expt_path, scan_config, spar=spar, plot=False
             )
         else:
             return do_vna_scan_segments(
-                hw, file_name, expt_path, scan_config, spar="s21", plot=False
+                hw, file_name, expt_path, scan_config, spar=spar, plot=False
             )
     else:
         return do_rfsoc_scan(
@@ -435,7 +438,6 @@ def power_sweep_v2(config, hw):
         - nvals: Number of power values to sweep
         - pow_inc: Power increment
         - pow_start: Starting power
-        - phase_inc: Phase increment for unwrapping for rfsoc
         - span_inc: Span increment factor [number of linewidths for scan]
         - kappa_start: Initial kappa value
         - npoints: Number of frequency points
@@ -555,7 +557,6 @@ def power_sweep_v2(config, hw):
                 "npoints": npoints,
                 "npoints1": config["npoints1"],
                 "npoints2": config["npoints2"],
-                "phase_inc": config["phase_inc"],
                 "power": power,
                 "bandwidth": config["bandwidth"],
                 "averages": int(curr_avg),
@@ -830,8 +831,9 @@ def _plot_qi_vs_photon(measurements, freq_idx, expt_path):
     fig, ax = plt.subplots(2, 1, figsize=(8, 6), sharex=True)
     for i, d in enumerate(np.arange(npl)): 
         d=measurements[freq_idx][i].raw_data
-        f = (d['xpts']-np.mean(d['xpts']))*1e3
-        ax[0].plot(f, d['amps']-np.max(d['amps']), label=f'{i}')
+        f = (d['freqs']-np.mean(d['freqs']))*1e3
+        y =d['amps']#-np.max(d['amps'])
+        ax[0].plot(f, y, label=f'{i}')
         ax[1].plot(f, d['phases']-np.mean(d['phases']), label=f'{i}')
     #ax[0].legend()
     ax[0].set_ylabel('Amplitude (dB)')
@@ -840,7 +842,6 @@ def _plot_qi_vs_photon(measurements, freq_idx, expt_path):
     ax[0].set_title(f"Frequency: {measurements[freq_idx][power_indices[0]].frequency:.5f} GHz")
     fig.savefig(os.path.join(expt_path, f"Data_{freq_idx}.png"))
     plt.close(fig)
-
 
 
 # For backward compatibility
@@ -958,6 +959,7 @@ def get_default_power_sweep_config(custom_config=None):
         "type": "lin",
         "freq_0": 6,
         "db_slope": 4,
+        "spar": "S21",
         # Analysis settings
         "avg_corr": 1e6,  # Correction factor for averaging
     }

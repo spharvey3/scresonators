@@ -343,6 +343,7 @@ class CLI_Vaunix_Attn:
         try:
             opts, args = getopt.getopt(argv,"hi:a:f:c:s:e:w:d:o:b:D:M:B:C:I:W:O:S:F:T:r",["iipaddr=","aattn=","ffreq=", "cchnl=", "srmst=", "ermed=", "wdwtm=", "didtm=", "ohdtm=", "bdwtm=", "Drmdi=", "Bbimd=", "Mrmmd=", "Cprct=", "Iprit=", "Wprdt=", "Oprmd=", "Svst=", "Fprel=", "Trun="
             ])
+            print(opts)
         except getopt.GetoptError as err:
             print(err)
             print ('vnx_ldaeth.py argument error')

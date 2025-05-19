@@ -9,9 +9,6 @@ import datetime
 
 
 def do_vna_scan(VNA, file_name, expt_path, cfg, spar="s21", att=0, plot=True):
-
-    
-    
     """
     Perform a VNA scan and save the data to a file.
 
@@ -356,6 +353,7 @@ def do_vna_scan_single_point(
         bandwidth = cfg["bandwidth"]
         power = cfg["power"]
         cfg["kappa_inc"] = 1.1
+        cfg["kappa"] = cfg['kappa']*1e6
 
         freq_list = get_homophase(cfg)
 
