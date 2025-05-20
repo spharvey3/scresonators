@@ -96,12 +96,12 @@ class ZNB20(SocketInstrument):
     #                           Initialisation
     #
     ###################################################################
-
-    def initialize_one_tone_spectroscopy(self, traces, Sparams):
+    
+    def initialize_one_tone_spectroscopy(self, traces, Sparams, spec_type='lin'):
 
         # Linear sweep in frequency
-        self.set_sweeptype("lin")
-
+        self.set_sweeptype(spec_type)
+        # lin or segm
         # Trigger to immediate
         self.set_trigger("imm")
 

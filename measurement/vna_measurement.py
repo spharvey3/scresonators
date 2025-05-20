@@ -178,6 +178,7 @@ def _perform_initial_scan(hw, expt_path, result, freq_idx, power, att, fname, co
         "power": power,
         "bandwidth": 1000, #result.config["bandwidth"],
         "averages": 1,
+        "slope": config["slope"],
     }
 
     # Perform VNA scan
@@ -561,6 +562,7 @@ def power_sweep_v2(config, hw):
                 "bandwidth": config["bandwidth"],
                 "averages": int(curr_avg),
                 "kappa": measurement.kappa/1e6,
+                "slope": config["slope"],
             }
             pin = (
                     power
@@ -807,8 +809,8 @@ def _plot_qi_vs_photon(measurements, freq_idx, expt_path):
     ax[0].set_title(
         f"Frequency: {measurements[freq_idx][power_indices[0]].frequency/1e9:.5f} GHz"
     )
-    if len(qi_alt_values) > 0:
-        ax[0].legend()
+    # if len(qi_alt_values) > 0:
+    #     ax[0].legend()
 
     # Plot Qc vs photon number
     ax[1].semilogx(photon_numbers, qc_values, "o-", label="Primary fit")
@@ -960,6 +962,7 @@ def get_default_power_sweep_config(custom_config=None):
         "freq_0": 6,
         "db_slope": 4,
         "spar": "S21",
+        "slope":0,
         # Analysis settings
         "avg_corr": 1e6,  # Correction factor for averaging
     }

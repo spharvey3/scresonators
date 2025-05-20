@@ -25,7 +25,7 @@ def find_peaks(data, prom=0.1):
 
     min_dist = 10e6  # minimum distance between peaks, may need to be edited if things are really close
     max_width = 15e6  # maximum width of peaks in MHz, may need to be edited if peaks are off
-    freq_sigma = 2  # sigma for gaussian filter
+    freq_sigma = 1  # sigma for gaussian filter
     
     # Convert parameters to indices
     df = data['freqs'][1] - data['freqs'][0]
