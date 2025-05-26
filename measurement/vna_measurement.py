@@ -394,10 +394,16 @@ def _should_stop_measuring(result, freq_idx, next_time):
     """
     #print(result.q_adjustment_factors[freq_idx])
     #print(next_time)
-    return (result.q_adjustment_factors[freq_idx] > 1.05 and next_time > 900 
-    ) or (result.q_adjustment_factors[freq_idx] > 1 and next_time > 1800
-    ) or (result.q_adjustment_factors[freq_idx] > 0.985 and next_time > 2700
-    ) or (result.q_adjustment_factors[freq_idx] > 0.96 and next_time > 3800
+    low_qother = True
+    if low_qother: 
+        thresh = [0.02, 0.005, -0.05, -0.15] 
+    else:
+        thresh = [0.05, 0.015, -0.0, -0.02]
+
+    return (result.q_adjustment_factors[freq_idx] > 1-thresh[3] and next_time > 900 
+    ) or (result.q_adjustment_factors[freq_idx] > 1-thresh[2] and next_time > 1800
+    ) or (result.q_adjustment_factors[freq_idx] > 1-thresh[1] and next_time > 2700
+    ) or (result.q_adjustment_factors[freq_idx] > 1-thresh[0] and next_time > 3800
     ) or next_time > 7200
 
 
@@ -845,6 +851,81 @@ def _plot_qi_vs_photon(measurements, freq_idx, expt_path):
     fig.savefig(os.path.join(expt_path, f"Data_{freq_idx}.png"))
     plt.close(fig)
 
+
+def _save_fit_to_csv(measurement, freq_idx, power_idx, expt_path):
+    """
+    Save fit parameters to a CSV file after each measurement.
+    
+    Parameters:
+    -----------
+    measurement : ResonatorMeasurement
+        Measurement object containing fit parameters
+    freq_idx : int
+        Frequency index
+    power_idx : int
+        Power index
+    expt_path : str
+        Path to save the CSV file
+    """
+    import csv
+    
+    # Create a filename based on the frequency only (not the scan)
+    # Round to nearest kHz to ensure consistent filenames across scans
+    freq_mhz = round(measurement.frequency / 1e3) / 1e3  # Round to nearest kHz
+    csv_filename = os.path.join(expt_path, f"fit_results_freq_{freq_mhz:.0f}MHz.csv")
+    
+    # Define the header and data row
+    header = [
+        "power_idx", "power_dBm", "power_at_device_dBm", 
+        "frequency_Hz", "q_total", "q_internal", "q_coupling", 
+        "kappa_Hz", "photon_number", "averages", "timestamp"
+    ]
+    
+    # Add alternative fit parameters to header if available
+    if measurement.q_total_alt is not None:
+        header.extend(["q_total_alt", "q_internal_alt", "q_coupling_alt", "frequency_alt_Hz"])
+        
+        # Add error parameters to header if available
+        if measurement.q_internal_err is not None:
+            header.extend(["q_internal_err", "q_coupling_err", "frequency_err", "phase_err"])
+    
+    # Create data row
+    data_row = [
+        power_idx, measurement.power, measurement.power_at_device,
+        measurement.frequency, measurement.q_total, measurement.q_internal, measurement.q_coupling,
+        measurement.kappa, measurement.photon_number, measurement.averages, 
+        datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ]
+    
+    # Add alternative fit parameters to data row if available
+    if measurement.q_total_alt is not None:
+        data_row.extend([
+            measurement.q_total_alt, measurement.q_internal_alt, 
+            measurement.q_coupling_alt, measurement.frequency_alt
+        ])
+        
+        # Add error parameters to data row if available
+        if measurement.q_internal_err is not None:
+            data_row.extend([
+                measurement.q_internal_err, measurement.q_coupling_err,
+                measurement.frequency_err, measurement.phase_err
+            ])
+    
+    # Check if file exists to determine if we need to write the header
+    file_exists = os.path.isfile(csv_filename)
+    
+    # Write to CSV file
+    with open(csv_filename, 'a', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        
+        # Write header if file doesn't exist
+        if not file_exists:
+            writer.writerow(header)
+        
+        # Write data row
+        writer.writerow(data_row)
+    
+    print(f"Saved fit results for frequency {freq_mhz:.6f} MHz, power {measurement.power} dBm to CSV")
 
 # For backward compatibility
 def power_sweep(config, VNA):
