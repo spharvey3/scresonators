@@ -1,5 +1,5 @@
 from scresonators.measurement.ZNB import ZNB20
-from scresonators.measurement.VNA_funcs import *
+from scresonators.measurement.VNA_funcs import plot_all
 from scresonators.measurement.datamanagement import SlabFile
 from scresonators.measurement.helpers import get_homophase
 import numpy as np
@@ -220,8 +220,11 @@ def do_vna_scan_consolidated(
         
         # Create data dictionary with timestamp (common for all scan types)
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        phase_corr = np.unwrap(phases)-cfg["slope"]*freq_sweep
-        phase_corr = phase_corr-np.mean(phase_corr)
+        if 'slope' in cfg:
+            phase_corr = np.unwrap(phases)-cfg["slope"]*freq_sweep
+            phase_corr = phase_corr-np.mean(phase_corr)
+        else:
+            phase_corr = np.unwrap(phases)
         data = {
             "series": timestamp,
             "amps": amps,

@@ -177,6 +177,7 @@ class Resonator:  # Object is auto-initialized with @attr annotation
     plot: str = "pdf"
     plot_extra: bool = False
     fix_freq: bool = False
+    Qc_fix: float = 1e6
     preprocess_method: str = "circle"
     power = 0
 

@@ -1207,6 +1207,7 @@ def fit(resonator):
     plot_extra = resonator.plot_extra
     fix_freq = resonator.fix_freq
     preprocess_method = resonator.preprocess_method
+    Qc_fix = resonator.Qc_fix
 
     # read in data from file
     if filepath is not None:
@@ -1381,6 +1382,8 @@ def fit(resonator):
             kappa = init[4]
             init = init[0:4]
 
+    if not change_Qc: 
+        init[1] = Qc_fix  # If Qc is fixed, set it to the fixed value
     # Extract data near resonate frequency to fit
     xdata, ydata = extract_near_res(
         x_raw, y_raw, freq, kappa, extract_factor=1
