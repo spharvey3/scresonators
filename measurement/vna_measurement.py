@@ -35,6 +35,12 @@ class ResonatorMeasurement:
     q_coupling_alt: Optional[float] = None
     frequency_alt: Optional[float] = None
 
+    # Error parameters for alternative fit (if available)
+    q_internal_err: Optional[float] = None
+    q_coupling_err: Optional[float] = None
+    frequency_err: Optional[float] = None
+    phase_err: Optional[float] = None
+
     # Measurement details
     kappa: float = 0.0  # Linewidth in Hz
     photon_number: float = 0.0  # Average photon number
@@ -334,7 +340,7 @@ def _perform_scan(hw, file_name, expt_path, scan_config, config, att):
         )
     
 
-def _determine_scan_parameters(config, result, freq_idx, power_idx, q_total):
+def _determine_scan_parameters(config, result, freq_idx, power_idx):
     """
     Determine the scan parameters based on the power index.
 
@@ -348,8 +354,6 @@ def _determine_scan_parameters(config, result, freq_idx, power_idx, q_total):
         Index of the frequency being measured
     power_idx : int
         Index of the power being measured
-    q_total : float
-        Total quality factor
 
     Returns:
     --------
@@ -357,21 +361,11 @@ def _determine_scan_parameters(config, result, freq_idx, power_idx, q_total):
         (npoints, span) - Number of points and span for the scan
     """
     if power_idx < 5:
-        npoints = int(np.ceil(1.6 * config["npoints"]))
-        span = result.spans[freq_idx] * 1.25
+        return int(np.ceil(1.6 * config["npoints"])), result.spans[freq_idx] * 1.25
     elif power_idx > 0 and "next_time" in globals():
-        # if globals()["next_time"] > 2400:
-        #     npoints = int(np.ceil(1.6 * config["npoints"]))
-        #     config["span_inc"] = 0.85 * config["span_inc"]
-        #     print("Reducing points due to long scan")
-        # else:
-        npoints = config["npoints"]
-        span = result.spans[freq_idx]
+        return config["npoints"], result.spans[freq_idx]
     else:
-        npoints = config["npoints"]
-        span = result.spans[freq_idx]
-
-    return npoints, span
+        return config["npoints"], result.spans[freq_idx]
 
 
 def _should_stop_measuring(result, freq_idx, next_time):
@@ -614,7 +608,7 @@ def power_sweep_v2(config, hw):
             # Perform alternative fitting
             try:
                 data = ResonatorData.fit_phase(data)
-                if power_idx < 8:
+                if power_idx < 100:
                     output = ResonatorFitter.fit_resonator(
                         data, fname, expt_path, plot=True, fix_freq=False
                     )
