@@ -32,7 +32,7 @@ def name_plot(filename, strmethod, output_path, format=".pdf"):
     if filename.endswith(".csv"):
         filename = filename[:-4]
     filename = filename.replace(".", "p")
-    return output_path + strmethod + "_" + filename + format
+    return os.path.join(output_path, strmethod + "_" + filename + format)
 
 
 def plot(x, y, name, output_path, x_c=None, y_c=None, r=None, p_x=None, p_y=None):
@@ -759,7 +759,8 @@ def PlotFit(
 
             plt.show()
             # write to output csv file
-            with open(output_path + "fit_params.csv", "w", newline="") as file:
+            import os 
+            with open(os.path.join(output_path,"fit_params.csv"), "w", newline="") as file:
                 writer = csv.writer(file)
                 if func == ff.cavity_inverse:
                     fields = ["Qi", "Qc*", "phi", "fc"]

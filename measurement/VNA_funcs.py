@@ -152,7 +152,7 @@ def plot_all(
     data, filepath=None, filename=None, save_fig=True, force_line_delay_val=None
 ):
     fig, ax = plt.subplots(2, 1, figsize=(8, 7))
-    ax[0].plot(data["freqs"], data["amps"], ".-")
+    ax[0].plot(data["freqs"], data["amps"], "-")
     fig.suptitle(
         f"{data['series']}, device power={data['power_at_device']} dBm \n IFBW={data['bandwidth']} Hz, avgs={data['averages']}"
     )

@@ -16,7 +16,7 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
-from slab.instruments import SocketInstrument
+from scresonators.measurement.Instrument import SocketInstrument
 
 # import visa
 import logging
@@ -96,12 +96,12 @@ class ZNB20(SocketInstrument):
     #                           Initialisation
     #
     ###################################################################
-
-    def initialize_one_tone_spectroscopy(self, traces, Sparams):
+    
+    def initialize_one_tone_spectroscopy(self, traces, Sparams, spec_type='lin'):
 
         # Linear sweep in frequency
-        self.set_sweeptype("lin")
-
+        self.set_sweeptype(spec_type)
+        # lin or segm
         # Trigger to immediate
         self.set_trigger("imm")
 
@@ -250,6 +250,7 @@ class ZNB20(SocketInstrument):
 
         p = 0
         val = []
+        sleep(0.1)
         while len(val) // 2 != int(self.get_points()[:-1]):
             p += 1
             val = self.query("CALC:DATA? SDAT")
