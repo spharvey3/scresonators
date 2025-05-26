@@ -451,6 +451,7 @@ def power_sweep_v2(config, hw):
         - bandwidth: Measurement bandwidth in Hz
         - averages: Number of averages
         - att: Attenuation value (optional, default is 0)
+        - comment: Optional comment to save as a text file
     VNA : ZNB object
         The VNA instrument object
 
@@ -468,44 +469,36 @@ def power_sweep_v2(config, hw):
     except Exception as e:
         print(f"Error creating directory: {str(e)}")
         raise
-
-    # Copy frequency lists to avoid modifying the original
-    freqs0 = copy.deepcopy(config["freqs"])
-    freqs = copy.deepcopy(config["freqs"])
+        
+    # Save comment to a text file if provided
+    if "comment" in config:
+        comment_file_path = os.path.join(expt_path, "comment.txt")
+        try:
+            with open(comment_file_path, 'w') as f:
+                f.write(config["comment"])
+            print(f"Comment saved to {comment_file_path}")
+        except Exception as e:
+            print(f"Error saving comment to file: {str(e)}")
 
     # Generate power values to sweep
     powers = np.arange(0, config["nvals"]) * config["pow_inc"] + config["pow_start"]
 
-    # Initialize arrays for spans and averaging
-    spans = config["span_inc"] * config["kappa_start"] * np.ones(len(freqs0))
-    new_avgs = np.ones(len(freqs0))
-    min_avg = 1
-
-    # Initialize result storage
-    measurements = {}
-    keep_going = [True] * len(freqs0)
-    q_adj = 0.9 * np.ones(len(freqs0))
-
-    # Get attenuation value
-    att = config.get("att", 0)
-
     # Create result object to track state
     result = PowerSweepResult(
         measurements={},
-        frequencies=freqs0,
-        current_frequencies=freqs,
+        frequencies=copy.deepcopy(config["freqs"]),
+        current_frequencies=copy.deepcopy(config["freqs"]),
         powers=powers,
         config=config,
-        spans=spans,
-        averaging_factors=new_avgs,
-        q_adjustment_factors=q_adj,
-        keep_measuring=keep_going,
+        spans=config["span_inc"] * config["kappa_start"] * np.ones(len(config["freqs"])),
+        averaging_factors=np.ones(len(config["freqs"])),
+        q_adjustment_factors=0.9 * np.ones(len(config["freqs"])),
+        keep_measuring=[True] * len(config["freqs"]),
     )
-    output_path = os.path.join(expt_path)
+    
     # Perform power sweep for each frequency
     for freq_idx, freq in enumerate(result.current_frequencies):
         result.measurements[freq_idx] = {}
-        dd=[]
 
         # Process each power point for this frequency
         for power_idx, power in enumerate(powers):
@@ -516,22 +509,15 @@ def power_sweep_v2(config, hw):
             if power_idx == 0:
                 result.averaging_factors[freq_idx] = 1
 
-            # Track averaging
-            curr_avg = max(result.averaging_factors[freq_idx], min_avg)
-
             # Create filenames
-            pow_name = f"{power:.0f}"
             fname = f"{result.frequencies[freq_idx]:1.0f}"
-
-            
             
             # For first power point, do an initial scan with wider span
             if power_idx == 0:
                 # Perform initial scan to find resonance frequency and linewidth
-                pin = (power - config["att"])
-                config['pin'] = pin
+                config['pin'] = power - config["att"]
                 measurement = _perform_initial_scan(
-                    hw, expt_path, result, freq_idx, power, att, fname, config
+                    hw, expt_path, result, freq_idx, power, config.get("att", 0), fname, config
                 )
 
                 # Update frequency and span based on measurement
@@ -552,9 +538,7 @@ def power_sweep_v2(config, hw):
                 prev_fit_params = prev_measurement.fit_parameters
 
             # Determine scan parameters based on power index
-            npoints, span = _determine_scan_parameters(
-                config, result, freq_idx, power_idx, prev_q
-            )
+            npoints, span = _determine_scan_parameters(config, result, freq_idx, power_idx)
 
             # Configure VNA scan for this power point
             scan_config = {
@@ -566,44 +550,38 @@ def power_sweep_v2(config, hw):
                 "npoints2": config["npoints2"],
                 "power": power,
                 "bandwidth": config["bandwidth"],
-                "averages": int(curr_avg),
+                "averages": int(max(result.averaging_factors[freq_idx], 1)),
                 "kappa": measurement.kappa/1e6,
                 "slope": config["slope"],
             }
-            pin = (
-                    power
-                    - config["att"]
-                    - config["db_slope"]
-                    * (measurement.frequency / 1e9 - config["freq_0"])
-                )
-            config['pin'] = pin
+            
+            config['pin'] = (
+                power
+                - config["att"]
+                - config["db_slope"]
+                * (measurement.frequency / 1e9 - config["freq_0"])
+            )
 
             # Perform the VNA scan
-            
             tstart = datetime.datetime.now()
             time_expected = (
                 1 / scan_config["bandwidth"] * npoints * scan_config["averages"]
             )
-            #print(f"Expected time: {time_expected / 60:.2f} min")
 
-            file_name = f"res_{fname}_{pow_name}dbm.h5"
-            data = _perform_scan(hw, file_name, expt_path, scan_config, config, att)
+            file_name = f"res_{fname}_{power:.0f}dbm.h5"
+            data = _perform_scan(hw, file_name, expt_path, scan_config, config, config.get("att", 0))
             
-            tfinish = datetime.datetime.now()
-            elapsed_time = (tfinish - tstart).total_seconds()
+            elapsed_time = (datetime.datetime.now() - tstart).total_seconds()
             print(
                 f"Time elapsed: {elapsed_time / 60:.2f} min, expected time: {time_expected / 60:.2f} min"
             )
 
-            # Fit data to find resonator parameters
-            min_freq = result.current_frequencies[
-                freq_idx
-            ]  # Use previous frequency as initial guess
+            result.current_frequencies[freq_idx] = data["freqs"][np.argmin(data["amps"])]
 
             # Determine fit parameters based on power index
             if power_idx < 8:
                 fitparams = [
-                    min_freq,
+                    result.current_frequencies[freq_idx],
                     prev_fit_params[1],
                     prev_fit_params[2],
                     prev_fit_params[3],
@@ -617,13 +595,13 @@ def power_sweep_v2(config, hw):
                 # For higher power indices, use mean of previous coupling Q values
                 qc_values = [
                     result.measurements[freq_idx][i].q_coupling
-                    for i in range(3, 7)
+                    for i in range(4, 8)
                     if i < power_idx
                 ]
                 qc_best = np.mean(qc_values) if qc_values else prev_fit_params[2] * 1e4
 
                 fitparams = [
-                    min_freq,
+                    result.current_frequencies[freq_idx],
                     prev_fit_params[1],
                     prev_fit_params[3],
                     np.max(10 ** (data["amps"] / 20)),
@@ -633,29 +611,33 @@ def power_sweep_v2(config, hw):
                 )
                 q_coupling = qc_best
 
-            # Calculate internal Q
-            q_internal = fit_params[1] * 1e4
-
             # Perform alternative fitting
             try:
                 data = ResonatorData.fit_phase(data)
-                output = ResonatorFitter.fit_resonator(
-                    data, fname, output_path, plot=True, fix_freq=False
-                )
-                q_total_alt = output[0][0]
-                q_coupling_alt = output[0][1]
-                phase = output[0][3]
+                if power_idx < 8:
+                    output = ResonatorFitter.fit_resonator(
+                        data, fname, expt_path, plot=True, fix_freq=False
+                    )
+                else:
+                    qc_values = [
+                    result.measurements[freq_idx][i].q_coupling_alt
+                    for i in range(4, 7)
+                    if i < power_idx
+                    ]
+                    qc_best = np.mean(np.array(qc_values))
+                    output = ResonatorFitter.fit_resonator(
+                        data, fname, expt_path, plot=True, fix_freq=False, fit_Qc=False, Qc_fix=qc_best
+                    )
+                
+                q_total_alt, q_coupling_alt, freq_alt, phase = output[0][:4]
+                phase_err, qi_err, qc_err, f_err = output[1][4], output[1][1], output[1][2], output[1][5]
+                
                 Qc_comp = q_coupling_alt / np.exp(1j * phase)
                 q_internal_alt = (q_total_alt**-1 - np.real(Qc_comp**-1)) ** -1
-                freq_alt = output[0][2]
-                q_internal_alt2 = 1 / (1 / q_total_alt - 1 / q_coupling_alt)
             except Exception as e:
                 print(f"Alternative fit failed: {str(e)}")
-                q_total_alt = None
-                q_coupling_alt = None
-                freq_alt = None
-                q_internal_alt = None
-            dd.append(data)
+                q_total_alt = q_coupling_alt = freq_alt = q_internal_alt = None
+                phase_err = qi_err = qc_err = f_err = None
 
             # Calculate photon number
             pin = (
@@ -663,29 +645,35 @@ def power_sweep_v2(config, hw):
                 - config["att"]
                 - config["db_slope"] * (freq_center / 1e9 - config["freq_0"])
             )
-            photon_number = n(pin, freq_center, q_total, q_coupling)
 
             # Create measurement object
             measurement = ResonatorMeasurement(
                 frequency=freq_center,
                 power=power,
-                power_at_device=power - att,
+                power_at_device=power - config.get("att", 0),
                 q_total=q_total,
-                q_internal=q_internal,
+                q_internal=fit_params[1] * 1e4,
                 q_coupling=q_coupling,
                 q_total_alt=q_total_alt,
                 q_internal_alt=q_internal_alt,
                 q_coupling_alt=q_coupling_alt,
                 frequency_alt=freq_alt,
+                q_internal_err=qi_err,
+                q_coupling_err=qc_err,
+                frequency_err=f_err,
+                phase_err=phase_err,
                 kappa=kappa,
-                photon_number=photon_number,
-                averages=int(curr_avg),
+                photon_number=n(pin, freq_center, q_total, q_coupling),
+                averages=int(max(result.averaging_factors[freq_idx], 1)),
                 fit_parameters=fit_params,
                 raw_data=data,
             )
 
             # Store the measurement
             result.measurements[freq_idx][power_idx] = measurement
+
+            # Save fit parameters to CSV
+            _save_fit_to_csv(measurement, freq_idx, power_idx, expt_path)
 
             # Plot Qi vs power
             _plot_qi_vs_photon(result.measurements, freq_idx, expt_path)
@@ -695,14 +683,12 @@ def power_sweep_v2(config, hw):
                 result.q_adjustment_factors[freq_idx] = measurement.q_total / prev_q
 
             if "avg_corr" in config:
-                
                 tau_prop = (
                     10 ** (-pin / 10)
                     * (measurement.q_coupling / measurement.q_total) ** 2
                     * 1e-11
                 )
-                #print((measurement.q_coupling / measurement.q_total)**2)
-                print(f"Tau proportionality: {tau_prop:.3f}")
+                print(f"Averaging factor: {tau_prop:.3f}")
 
                 result.averaging_factors[freq_idx] = np.round(
                     config["avg_corr"]
@@ -727,8 +713,6 @@ def power_sweep_v2(config, hw):
 
             # Update span for next measurement
             result.spans[freq_idx] = measurement.kappa * config["span_inc"]
-
-        
 
     return result
 
