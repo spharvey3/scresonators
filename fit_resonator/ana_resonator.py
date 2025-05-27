@@ -462,7 +462,7 @@ class ResonatorFitter:
         pre: str = "circle",
         fix_freq: bool = False,
         fit_Qc: bool = True,
-        Qc_fix = 1e6,
+        Qc_fix=1e6,
     ) -> Tuple[List[float], List[float]]:
         """
         Fit a resonator model to data.
@@ -488,7 +488,7 @@ class ResonatorFitter:
         my_resonator.from_columns(data["freqs"], data["amps"], data["phases"])
         my_resonator.fix_freq = fix_freq
         my_resonator.Qc_fix = Qc_fix
-        
+
         # Set fit parameters
         MC_iteration = 4
         MC_rounds = 1e3
@@ -501,7 +501,7 @@ class ResonatorFitter:
 
         # Set preprocessing method
         my_resonator.preprocess_method = pre
-        #my_resonator.filepath = "./"
+        # my_resonator.filepath = "./"
         my_resonator.filepath = "/imgs/"
 
         # Perform fit
@@ -818,6 +818,21 @@ class ResonatorAnalyzer:
                 res_params[i][key] = np.array(res_params[i][key])
 
         return res_params, file_list
+
+    @staticmethod
+    def analyze_sweep(data_pth, img_pth, name, params, ind, plot=True):
+
+        return analyze_sweep_gen(
+            [params[dir][ind]],
+            data_pth,
+            img_pth,
+            name=name,
+            plot=plot,
+            nfiles=params["nfiles"][ind],
+            meas_type=params["meas_type"][ind],
+            slope=params["slope"][ind],
+            fitphase=True,
+        )
 
 
 class ResonatorPlotter:

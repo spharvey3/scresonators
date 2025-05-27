@@ -43,3 +43,26 @@ siliconta6_res2c2:
   - 7.06
   - 7.09
   - 8.13 
+siliconta6_res3c2:
+  dir:
+  - power_sweep_20250526_211305/
+  meas:
+  - silta6_res3c2
+  pitch:
+  - 10
+  - 12
+  - 14
+  - 16
+  - 4
+  - 6
+  - 8
+  pth: 
+  - 250518-ResSilTa3_cooldown2/
+  target_freq:
+  - 6.08
+  - 6.4
+  - 6.76
+  - 7.09
+  - 7.28
+  - 7.64
+  - 8.13 
