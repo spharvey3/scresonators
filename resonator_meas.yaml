@@ -793,7 +793,7 @@ siliconta6_res2c2:
   slope: 
   - 0
   dir:
-  - power_sweep_combo/
+  - - power_sweep_combo/
   meas:
   - silta6_res2c2
   pitch:

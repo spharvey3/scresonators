@@ -2,7 +2,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import datetime
-import scresonators.measurement.fitting as fitter
 
 import copy
 from scipy.optimize import curve_fit
@@ -11,8 +10,12 @@ from scresonators.fit_resonator.ana_resonator import ResonatorFitter
 from scresonators.fit_resonator.ana_resonator import ResonatorData
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
-from scresonators.measurement.helpers import n, pow_res, config_figs
+from scresonators.measurement.helpers import n, config_figs
 import seaborn as sns
+from scresonators.fit_resonator.basic_fit import fit_resonator
+from scresonators.measurement.rfsoc_scan import do_rfsoc_scan
+
+
 @dataclass
 class ResonatorMeasurement:
     """
@@ -78,78 +81,6 @@ class PowerSweepResult:
     keep_measuring: List[bool]  # Whether to continue measuring each resonator
 
 
-def plot_scan(freq, amps, phase, pars=None, pinit=None, power=None, slope=None):
-    """
-    Plot the scan data with amplitude, phase, and IQ plots.
-
-    Parameters:
-    -----------
-    freq : array
-        Frequency points
-    amps : array
-        Amplitude data
-    phase : array
-        Phase data
-    pars : list, optional
-        Fit parameters
-    pinit : list, optional
-        Initial fit parameters
-    power : float, optional
-        Power level in dBm
-    slope : float, optional
-        Phase slope for unwrapping
-
-    Returns:
-    --------
-    None
-    """
-    fig, ax = plt.subplots(1, 3, figsize=(12, 4))
-    ax[0].plot(freq / 1e6, amps, "k.", markersize=3)
-    ax[0].set_xlabel("Frequency (MHz)")
-    ax[0].set_ylabel("Amplitude")
-    if pars is not None:
-        q = 1 / (1 / pars[1] + 1 / pars[2]) * 1e4
-        qi = pars[1] * 1e4
-        qc = pars[2] * 1e4
-        lab = f"$Q$={q:.3g}\n $Q_i$={qi:.3g} \n $Q_c$={qc:.3g}"
-        ax[0].plot(freq / 1e6, fitter.hangerS21func(freq, *pars))
-        # ax[0].plot(freq / 1e6, fitter.hangerS21func(freq, *pinit))
-    ax[0].set_title(f"Power: {power:.1f} dB")
-    if slope is None:
-        phase = np.unwrap(phase)
-        slope, of = np.polyfit(freq, phase, 1)
-        phase_sub = phase - slope * freq - of
-    else:
-        phase_sub = phase - slope * freq
-    ax[1].plot(
-        freq / 1e6,
-        np.unwrap(phase_sub) - np.mean(np.unwrap(phase_sub)),
-        "k.-",
-        markersize=3,
-    )
-    ax[1].set_xlabel("Frequency (MHz)")
-    ax[1].set_ylabel("Phase")
-    # ax[0].legend(loc="lower right")
-    ax[0].text(
-        0.95,
-        0.05,
-        lab,
-        transform=ax[0].transAxes,
-        fontsize=10,
-        verticalalignment="bottom",
-        horizontalalignment="right",
-        bbox=dict(facecolor="white", alpha=0.5, edgecolor="black"),
-    )
-    ax2 = ax[0].twinx()
-    if pars is not None:
-        ax2.set_ylim(ax[0].get_ylim()[0] / pars[4], ax[0].get_ylim()[1] / pars[4])
-    ax2.set_ylabel("Normalized Amplitude")
-
-    ax[2].plot(amps * np.cos(phase_sub), amps * np.sin(phase_sub), "k.-")
-    fig.tight_layout()
-    # plt.show()
-
-
 def _perform_initial_scan(hw, expt_path, result, freq_idx, power, att, fname, config):
     """
     Perform an initial scan to find the resonance frequency and linewidth.
@@ -182,7 +113,7 @@ def _perform_initial_scan(hw, expt_path, result, freq_idx, power, att, fname, co
         "span": float(result.spans[freq_idx]) * 1.3,
         "npoints": 800,
         "power": power,
-        "bandwidth": 1000, #result.config["bandwidth"],
+        "bandwidth": 1000,  # result.config["bandwidth"],
         "averages": 1,
         "slope": config["slope"],
     }
@@ -191,15 +122,18 @@ def _perform_initial_scan(hw, expt_path, result, freq_idx, power, att, fname, co
     file_name = f"res_{fname}_single.h5"
     if type(hw) is not dict:
         import scresonators.measurement.vna_scan as vna_scan
+
         data = vna_scan.do_vna_scan(
-            hw, file_name, expt_path, scan_config, config['spar'], att=att, plot=False
+            hw, file_name, expt_path, scan_config, config["spar"], att=att, plot=False
         )
     else:
-        config=copy.deepcopy(config)
-        config["phase_const"]=False
-        scan_config['kappa']=np.nan
+        config = copy.deepcopy(config)
+        config["phase_const"] = False
+        scan_config["kappa"] = np.nan
 
-        data = do_rfsoc_scan(hw, file_name, expt_path, scan_config,config =config, att=att, plot=False)
+        data = do_rfsoc_scan(
+            hw, file_name, expt_path, scan_config, config=config, att=att, plot=False
+        )
 
     # Fit resonator to find center frequency and kappa
     min_freq = result.current_frequencies[freq_idx]  # Initial guess
@@ -233,67 +167,6 @@ def _perform_initial_scan(hw, expt_path, result, freq_idx, power, att, fname, co
     )
 
 
-def do_rfsoc_scan(hw, file_name, expt_path, scan_config, config, att=0, plot=False):
-    import slab_qick_calib.experiments as meas
-    # for now, change gain 
-    if 'attn_id' in config:
-        from scresonators.measurement import vaunix_da
-        gain=1
-        vaunix_da.set_atten(config['attn_id'], config['attn_channel'], -scan_config['power'])
-        import time
-        time.sleep(0.1)
-        
-    else:
-        gain = 10**(scan_config['power']/20)
-    
-    if 'loop' not in config:
-        config['loop'] = False
-        config['phase_const']=False
-    params = {'span':scan_config['span']/1e6,
-              'reps':scan_config['averages'],
-              'gain':gain,
-              'length':int(1e6/scan_config['bandwidth']),
-              'center':scan_config['freq_center']/1e6,
-              'expts':scan_config['npoints'],
-              'loop':config['loop'], 
-              'phase_const':config['phase_const'],
-              'final_delay':50}
-    oth_par = {'span':0.2, 
-               'reps':10,
-               'gain':gain,
-               'length':1000,
-               'center':scan_config['freq_center']/1e6-3,
-               'expts':10,
-               }
-    s = meas.ResSpec(hw, qi=0, params=oth_par, save=False, display=False, analyze=False, progress=False)
-    # Otherwise the ADCs will saturate 
-    if scan_config['power']>=-20: 
-        params['length'] = np.min((params['length'],1000))
-    if config['loop']: 
-        exp = meas.ResSpec2D
-        params['expts_count']=params['reps']
-        params['reps']=1
-        params['kappa']=scan_config['kappa'],
-        if config['pin']>-88:
-            params['length']=np.min((params['length'],10000))
-    else:
-        exp = meas.ResSpec
-
-    rspec = exp(hw, qi=0, params=params, save=False, display=False, analyze=False)
-
-    rspec.data['freqs']=rspec.data['xpts']*1e6
-
-    fix_phase = rspec.data['phases'] 
-    data = copy.deepcopy(rspec.data)
-    data['phases']= np.unwrap(fix_phase)-np.unwrap(fix_phase)[0]
-    data['amps']=20*np.log10(data['amps'])
-    rspec.data = data
-    rspec.cfg['power'] = scan_config['power']
-    rspec.fname = os.path.join(expt_path, file_name)
-    rspec.save_data()
-    
-    return data
-
 def _perform_scan(hw, file_name, expt_path, scan_config, config, att):
     """
     Perform a scan based on the scan type specified in the config.
@@ -318,9 +191,13 @@ def _perform_scan(hw, file_name, expt_path, scan_config, config, att):
     dict
         Dictionary containing the measurement data
     """
-    spar=config["spar"]
-    if not config["type"]== "rfsoc":
-        from scresonators.measurement.vna_scan import do_vna_scan, do_vna_scan_single_point, do_vna_scan_segments
+    spar = config["spar"]
+    if not config["type"] == "rfsoc":
+        from scresonators.measurement.vna_scan import (
+            do_vna_scan,
+            do_vna_scan_single_point,
+            do_vna_scan_segments,
+        )
 
         if config["type"] == "lin":
             return do_vna_scan(
@@ -338,7 +215,7 @@ def _perform_scan(hw, file_name, expt_path, scan_config, config, att):
         return do_rfsoc_scan(
             hw, file_name, expt_path, scan_config, config=config, att=att, plot=False
         )
-    
+
 
 def _determine_scan_parameters(config, result, freq_idx, power_idx):
     """
@@ -386,19 +263,21 @@ def _should_stop_measuring(result, freq_idx, next_time):
     bool
         True if we should stop measuring, False otherwise
     """
-    #print(result.q_adjustment_factors[freq_idx])
-    #print(next_time)
+    # print(result.q_adjustment_factors[freq_idx])
+    # print(next_time)
     low_qother = True
-    if low_qother: 
-        thresh = [0.02, 0.005, -0.05, -0.15] 
+    if low_qother:
+        thresh = [0.02, 0.005, -0.05, -0.15]
     else:
         thresh = [0.05, 0.015, -0.0, -0.02]
 
-    return (result.q_adjustment_factors[freq_idx] > 1-thresh[3] and next_time > 900 
-    ) or (result.q_adjustment_factors[freq_idx] > 1-thresh[2] and next_time > 1800
-    ) or (result.q_adjustment_factors[freq_idx] > 1-thresh[1] and next_time > 2700
-    ) or (result.q_adjustment_factors[freq_idx] > 1-thresh[0] and next_time > 3800
-    ) or next_time > 7200
+    return (
+        (result.q_adjustment_factors[freq_idx] > 1 - thresh[3] and next_time > 900)
+        or (result.q_adjustment_factors[freq_idx] > 1 - thresh[2] and next_time > 1800)
+        or (result.q_adjustment_factors[freq_idx] > 1 - thresh[1] and next_time > 2700)
+        or (result.q_adjustment_factors[freq_idx] > 1 - thresh[0] and next_time > 3800)
+        or next_time > 7200
+    )
 
 
 def _calculate_next_measurement_time(config, result, freq_idx):
@@ -463,12 +342,12 @@ def power_sweep_v2(config, hw):
     except Exception as e:
         print(f"Error creating directory: {str(e)}")
         raise
-        
+
     # Save comment to a text file if provided
     if "comment" in config:
         comment_file_path = os.path.join(expt_path, "comment.txt")
         try:
-            with open(comment_file_path, 'w') as f:
+            with open(comment_file_path, "w") as f:
                 f.write(config["comment"])
             print(f"Comment saved to {comment_file_path}")
         except Exception as e:
@@ -484,12 +363,14 @@ def power_sweep_v2(config, hw):
         current_frequencies=copy.deepcopy(config["freqs"]),
         powers=powers,
         config=config,
-        spans=config["span_inc"] * config["kappa_start"] * np.ones(len(config["freqs"])),
+        spans=config["span_inc"]
+        * config["kappa_start"]
+        * np.ones(len(config["freqs"])),
         averaging_factors=np.ones(len(config["freqs"])),
         q_adjustment_factors=0.9 * np.ones(len(config["freqs"])),
         keep_measuring=[True] * len(config["freqs"]),
     )
-    
+
     # Perform power sweep for each frequency
     for freq_idx, freq in enumerate(result.current_frequencies):
         result.measurements[freq_idx] = {}
@@ -505,13 +386,20 @@ def power_sweep_v2(config, hw):
 
             # Create filenames
             fname = f"{result.frequencies[freq_idx]:1.0f}"
-            
+
             # For first power point, do an initial scan with wider span
             if power_idx == 0:
                 # Perform initial scan to find resonance frequency and linewidth
-                config['pin'] = power - config["att"]
+                config["pin"] = power - config["att"]
                 measurement = _perform_initial_scan(
-                    hw, expt_path, result, freq_idx, power, config.get("att", 0), fname, config
+                    hw,
+                    expt_path,
+                    result,
+                    freq_idx,
+                    power,
+                    config.get("att", 0),
+                    fname,
+                    config,
                 )
 
                 # Update frequency and span based on measurement
@@ -532,7 +420,9 @@ def power_sweep_v2(config, hw):
                 prev_fit_params = prev_measurement.fit_parameters
 
             # Determine scan parameters based on power index
-            npoints, span = _determine_scan_parameters(config, result, freq_idx, power_idx)
+            npoints, span = _determine_scan_parameters(
+                config, result, freq_idx, power_idx
+            )
 
             # Configure VNA scan for this power point
             scan_config = {
@@ -545,15 +435,14 @@ def power_sweep_v2(config, hw):
                 "power": power,
                 "bandwidth": config["bandwidth"],
                 "averages": int(max(result.averaging_factors[freq_idx], 1)),
-                "kappa": measurement.kappa/1e6,
+                "kappa": measurement.kappa / 1e6,
                 "slope": config["slope"],
             }
-            
-            config['pin'] = (
+
+            config["pin"] = (
                 power
                 - config["att"]
-                - config["db_slope"]
-                * (measurement.frequency / 1e9 - config["freq_0"])
+                - config["db_slope"] * (measurement.frequency / 1e9 - config["freq_0"])
             )
 
             # Perform the VNA scan
@@ -563,14 +452,18 @@ def power_sweep_v2(config, hw):
             )
 
             file_name = f"res_{fname}_{power:.0f}dbm.h5"
-            data = _perform_scan(hw, file_name, expt_path, scan_config, config, config.get("att", 0))
-            
+            data = _perform_scan(
+                hw, file_name, expt_path, scan_config, config, config.get("att", 0)
+            )
+
             elapsed_time = (datetime.datetime.now() - tstart).total_seconds()
             print(
                 f"Time elapsed: {elapsed_time / 60:.2f} min, expected time: {time_expected / 60:.2f} min"
             )
 
-            result.current_frequencies[freq_idx] = data["freqs"][np.argmin(data["amps"])]
+            result.current_frequencies[freq_idx] = data["freqs"][
+                np.argmin(data["amps"])
+            ]
 
             # Determine fit parameters based on power index
             if power_idx < 8:
@@ -614,18 +507,29 @@ def power_sweep_v2(config, hw):
                     )
                 else:
                     qc_values = [
-                    result.measurements[freq_idx][i].q_coupling_alt
-                    for i in range(4, 7)
-                    if i < power_idx
+                        result.measurements[freq_idx][i].q_coupling_alt
+                        for i in range(4, 7)
+                        if i < power_idx
                     ]
                     qc_best = np.mean(np.array(qc_values))
                     output = ResonatorFitter.fit_resonator(
-                        data, fname, expt_path, plot=True, fix_freq=False, fit_Qc=False, Qc_fix=qc_best
+                        data,
+                        fname,
+                        expt_path,
+                        plot=True,
+                        fix_freq=False,
+                        fit_Qc=False,
+                        Qc_fix=qc_best,
                     )
-                
+
                 q_total_alt, q_coupling_alt, freq_alt, phase = output[0][:4]
-                phase_err, qi_err, qc_err, f_err = output[1][4], output[1][1], output[1][2], output[1][5]
-                
+                phase_err, qi_err, qc_err, f_err = (
+                    output[1][4],
+                    output[1][1],
+                    output[1][2],
+                    output[1][5],
+                )
+
                 Qc_comp = q_coupling_alt / np.exp(1j * phase)
                 q_internal_alt = (q_total_alt**-1 - np.real(Qc_comp**-1)) ** -1
             except Exception as e:
@@ -709,6 +613,7 @@ def power_sweep_v2(config, hw):
             result.spans[freq_idx] = measurement.kappa * config["span_inc"]
 
     return result
+
 
 def _plot_qi_vs_photon(measurements, freq_idx, expt_path):
     """
@@ -813,19 +718,21 @@ def _plot_qi_vs_photon(measurements, freq_idx, expt_path):
     plt.close(fig)
 
     npl = len(measurements[freq_idx])
-    sns.set_palette('crest', npl)
+    sns.set_palette("crest", npl)
     fig, ax = plt.subplots(2, 1, figsize=(8, 6), sharex=True)
-    for i, d in enumerate(np.arange(npl)): 
-        d=measurements[freq_idx][i].raw_data
-        f = (d['freqs']-np.mean(d['freqs']))*1e3
-        y =d['amps']#-np.max(d['amps'])
-        ax[0].plot(f, y, label=f'{i}')
-        ax[1].plot(f, d['phases']-np.mean(d['phases']), label=f'{i}')
-    #ax[0].legend()
-    ax[0].set_ylabel('Amplitude (dB)')
-    ax[1].set_ylabel('Phase (rad)')
-    ax[1].set_xlabel('Frequency Offset (kHz)')
-    ax[0].set_title(f"Frequency: {measurements[freq_idx][power_indices[0]].frequency:.5f} GHz")
+    for i, d in enumerate(np.arange(npl)):
+        d = measurements[freq_idx][i].raw_data
+        f = (d["freqs"] - np.mean(d["freqs"])) * 1e3
+        y = d["amps"]  # -np.max(d['amps'])
+        ax[0].plot(f, y, label=f"{i}")
+        ax[1].plot(f, d["phases"] - np.mean(d["phases"]), label=f"{i}")
+    # ax[0].legend()
+    ax[0].set_ylabel("Amplitude (dB)")
+    ax[1].set_ylabel("Phase (rad)")
+    ax[1].set_xlabel("Frequency Offset (kHz)")
+    ax[0].set_title(
+        f"Frequency: {measurements[freq_idx][power_indices[0]].frequency:.5f} GHz"
+    )
     fig.savefig(os.path.join(expt_path, f"Data_{freq_idx}.png"))
     plt.close(fig)
 
@@ -833,7 +740,7 @@ def _plot_qi_vs_photon(measurements, freq_idx, expt_path):
 def _save_fit_to_csv(measurement, freq_idx, power_idx, expt_path):
     """
     Save fit parameters to a CSV file after each measurement.
-    
+
     Parameters:
     -----------
     measurement : ResonatorMeasurement
@@ -846,142 +753,94 @@ def _save_fit_to_csv(measurement, freq_idx, power_idx, expt_path):
         Path to save the CSV file
     """
     import csv
-    
+
     # Create a filename based on the frequency only (not the scan)
     # Round to nearest kHz to ensure consistent filenames across scans
     freq_mhz = round(measurement.frequency / 1e3) / 1e3  # Round to nearest kHz
     csv_filename = os.path.join(expt_path, f"fit_results_freq_{freq_mhz:.0f}MHz.csv")
-    
+
     # Define the header and data row
     header = [
-        "power_idx", "power_dBm", "power_at_device_dBm", 
-        "frequency_Hz", "q_total", "q_internal", "q_coupling", 
-        "kappa_Hz", "photon_number", "averages", "timestamp"
+        "power_idx",
+        "power_dBm",
+        "power_at_device_dBm",
+        "frequency_Hz",
+        "q_total",
+        "q_internal",
+        "q_coupling",
+        "kappa_Hz",
+        "photon_number",
+        "averages",
+        "timestamp",
     ]
-    
+
     # Add alternative fit parameters to header if available
     if measurement.q_total_alt is not None:
-        header.extend(["q_total_alt", "q_internal_alt", "q_coupling_alt", "frequency_alt_Hz"])
-        
+        header.extend(
+            ["q_total_alt", "q_internal_alt", "q_coupling_alt", "frequency_alt_Hz"]
+        )
+
         # Add error parameters to header if available
         if measurement.q_internal_err is not None:
-            header.extend(["q_internal_err", "q_coupling_err", "frequency_err", "phase_err"])
-    
+            header.extend(
+                ["q_internal_err", "q_coupling_err", "frequency_err", "phase_err"]
+            )
+
     # Create data row
     data_row = [
-        power_idx, measurement.power, measurement.power_at_device,
-        measurement.frequency, measurement.q_total, measurement.q_internal, measurement.q_coupling,
-        measurement.kappa, measurement.photon_number, measurement.averages, 
-        datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        power_idx,
+        measurement.power,
+        measurement.power_at_device,
+        measurement.frequency,
+        measurement.q_total,
+        measurement.q_internal,
+        measurement.q_coupling,
+        measurement.kappa,
+        measurement.photon_number,
+        measurement.averages,
+        datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     ]
-    
+
     # Add alternative fit parameters to data row if available
     if measurement.q_total_alt is not None:
-        data_row.extend([
-            measurement.q_total_alt, measurement.q_internal_alt, 
-            measurement.q_coupling_alt, measurement.frequency_alt
-        ])
-        
+        data_row.extend(
+            [
+                measurement.q_total_alt,
+                measurement.q_internal_alt,
+                measurement.q_coupling_alt,
+                measurement.frequency_alt,
+            ]
+        )
+
         # Add error parameters to data row if available
         if measurement.q_internal_err is not None:
-            data_row.extend([
-                measurement.q_internal_err, measurement.q_coupling_err,
-                measurement.frequency_err, measurement.phase_err
-            ])
-    
+            data_row.extend(
+                [
+                    measurement.q_internal_err,
+                    measurement.q_coupling_err,
+                    measurement.frequency_err,
+                    measurement.phase_err,
+                ]
+            )
+
     # Check if file exists to determine if we need to write the header
     file_exists = os.path.isfile(csv_filename)
-    
+
     # Write to CSV file
-    with open(csv_filename, 'a', newline='') as csvfile:
+    with open(csv_filename, "a", newline="") as csvfile:
         writer = csv.writer(csvfile)
-        
+
         # Write header if file doesn't exist
         if not file_exists:
             writer.writerow(header)
-        
+
         # Write data row
         writer.writerow(data_row)
-    
-    print(f"Saved fit results for frequency {freq_mhz:.6f} MHz, power {measurement.power} dBm to CSV")
 
-# For backward compatibility
-def power_sweep(config, VNA):
-    """
-    Perform a power sweep scan using the do_vna_scan function.
-    This is a wrapper around power_sweep_v2 for backward compatibility.
+    print(
+        f"Saved fit results for frequency {freq_mhz:.6f} MHz, power {measurement.power} dBm to CSV"
+    )
 
-    Parameters:
-    -----------
-    config : dict
-        Configuration dictionary with measurement parameters
-    VNA : ZNB object
-        The VNA instrument object
-
-    Returns:
-    --------
-    list
-        List of parameter lists for each frequency and power
-    """
-    result = power_sweep_v2(config, VNA)
-
-    # Convert the result to the old format for backward compatibility
-    pars_list = []
-    for freq_idx in sorted(result.measurements.keys()):
-        freq_pars = []
-        for power_idx in sorted(result.measurements[freq_idx].keys()):
-            freq_pars.append(result.measurements[freq_idx][power_idx].fit_parameters)
-        pars_list.append(freq_pars)
-
-    return pars_list
-
-
-def fit_resonator(data, power, fitparams=None, qc=None, plot=False):
-
-    # Convert amplitude from dB to linear scale
-    amps_linear = 10 ** (data["amps"] / 20)
-    # f0, Qi, Qe, phi, scale, a0, slope # Qi/Qe in units of 10k
-    if qc is not None:
-        hangerfit = lambda f, f0, qi, phi, scale: fitter.hangerS21func(
-            f, f0, qi, qc / 1e4, phi, scale
-        )
-
-        pars, err = curve_fit(hangerfit, data["freqs"], amps_linear, p0=fitparams)
-        freq_center = pars[0]
-        q = 1 / (1 / pars[1] / 1e4 + 1 / qc)
-        kappa = freq_center / q
-        r2 = fitter.get_r2(data["freqs"], amps_linear, hangerfit, pars)
-        err = np.sqrt(np.diag(err))
-        # print('f error: ', err[0], 'Qi error: ', err[1], 'phi error: ', err[2], 'scale error: ', err[3])
-        print(f"Qi err: {err[1]/pars[1]}")
-        pars = [pars[0], pars[1], qc / 1e4, pars[2], pars[3]]
-        fitparams = [pars[0], pars[1], qc / 1e4, pars[3], pars[4]]
-    else:
-        if fitparams is None:
-            min_freq = data["freqs"][np.argmin(amps_linear)]
-            fitparams = [min_freq, 100, 100, 0, np.max(amps_linear)]
-
-        pars, err, pinit = fitter.fithanger(
-            data["freqs"], amps_linear, fitparams=fitparams
-        )
-
-        pars, err, pinit = fitter.fithanger(data["freqs"], amps_linear, fitparams=pars)
-
-        freq_center = pars[0]
-        q = 1 / (1 / pars[1] + 1 / pars[2]) * 1e4
-        kappa = freq_center / q
-    if plot:
-        plot_scan(
-            data["freqs"],
-            amps_linear,
-            data["phases"],
-            pars,
-            fitparams,
-            power,
-        )
-    plt.show()
-
-    return freq_center, q, kappa, pars
 
 def get_default_power_sweep_config(custom_config=None):
     """
@@ -1021,7 +880,7 @@ def get_default_power_sweep_config(custom_config=None):
         "freq_0": 6,
         "db_slope": 4,
         "spar": "S21",
-        "slope":0,
+        "slope": 0,
         # Analysis settings
         "avg_corr": 1e6,  # Correction factor for averaging
     }
