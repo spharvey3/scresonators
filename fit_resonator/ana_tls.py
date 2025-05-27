@@ -1,4 +1,5 @@
-Tc = 9.288
+Tc_nb = 9.288
+Tc_Ta = 4.48
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.constants as cs

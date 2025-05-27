@@ -3,6 +3,7 @@ import re
 import json
 import numpy as np
 import yaml
+import os
 
 """Reopen saved data"""
 
@@ -83,8 +84,6 @@ def load(file_name):
 
 
 def get_params(yml_file, meas, pth=""):
-    import yaml
-    import os
 
     with open(yml_file, "r") as file:
         sample_dict = yaml.safe_load(file)
@@ -100,6 +99,9 @@ def get_params(yml_file, meas, pth=""):
     ind = sample_dict[sample]["meas"].index(meas)
     params = sample_dict[sample]
 
-    data_pth = os.path.join(pth, "Data", params["pth"][ind], params["dir"][ind])
+    # data_pth = os.path.join(pth, "Data", params["pth"][ind], params["dir"][ind])
+    # data_pth = pth + folder + "Data/" + params["pth"][ind]
+    data_pth = os.path.join(pth, "Data", params["pth"][ind])
+    folder = params["dir"][ind]
     img_name = params["pth"][ind][0:-1] + params["meas"][ind]
-    return params, data_pth, img_name
+    return params, data_pth, folder, img_name, ind

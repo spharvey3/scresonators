@@ -28,9 +28,9 @@ class ResonatorMeasurement:
     power_at_device: float  # Power at device in dBm
 
     # Quality factors
-    q_total: float  # Total quality factor
-    q_internal: float  # Internal quality factor
-    q_coupling: float  # Coupling quality factor
+    q_total_amp: float  # Total quality factor
+    q_internal_amp: float  # Internal quality factor
+    q_coupling_amp: float  # Coupling quality factor
 
     # Alternative fit results (if available)
     q_total_alt: Optional[float] = None
@@ -156,9 +156,9 @@ def _perform_initial_scan(hw, expt_path, result, freq_idx, power, att, fname, co
         frequency=freq_center,
         power=power,
         power_at_device=power - att,
-        q_total=q_total,
-        q_internal=q_internal,
-        q_coupling=q_coupling,
+        q_total_amp=q_total,
+        q_internal_amp=q_internal,
+        q_coupling_amp=q_coupling,
         kappa=kappa,
         photon_number=photon_number,
         averages=1,
@@ -410,13 +410,13 @@ def power_sweep_v2(config, hw):
                 result.measurements[freq_idx][power_idx] = measurement
 
                 # Store parameters for next iteration
-                prev_q = measurement.q_total
+                prev_q = measurement.q_total_amp
                 prev_fit_params = measurement.fit_parameters
 
             # Use parameters from previous power point
             else:
                 prev_measurement = result.measurements[freq_idx][power_idx - 1]
-                prev_q = prev_measurement.q_total
+                prev_q = prev_measurement.q_total_amp
                 prev_fit_params = prev_measurement.fit_parameters
 
             # Determine scan parameters based on power index
@@ -434,7 +434,7 @@ def power_sweep_v2(config, hw):
                 "npoints2": config["npoints2"],
                 "power": power,
                 "bandwidth": config["bandwidth"],
-                "averages": int(max(result.averaging_factors[freq_idx], 1)),
+                "averages": int(max(result.averaging_factors[freq_idx], 100)),
                 "kappa": measurement.kappa / 1e6,
                 "slope": config["slope"],
             }
