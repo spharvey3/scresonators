@@ -808,3 +808,38 @@ siliconta6_res2c2:
   - 7.06
   - 7.09
   - 8.13 
+siliconta6_res1combo:
+  atten: -65
+  flip: true
+  max_power: 20
+  min_power: -150
+  meas_type: 
+  - vna
+  nfiles:
+  - 1
+  slope: 
+  - 0
+  dir:
+  - - power_sweep_combo/
+  meas:
+  - silta6_res1combo
+  pitch:
+  - 10
+  - 12
+  - 14
+  - 2
+  - 16
+  - 4
+  - 6
+  - 8
+  pth: 
+  - 250518-ResSilTa1_cooldown2p
+  target_freq:
+  - 6.08
+  - 6.4
+  - 6.76
+  - 7.06
+  - 7.09
+  - 7.28
+  - 7.64
+  - 8.13 
