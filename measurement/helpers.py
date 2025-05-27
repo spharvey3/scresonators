@@ -87,7 +87,6 @@ def get_homophase(config):
     at = np.arctan(2 * w / (1 - w**2)) + np.pi
     R = w / np.tan(at / 2)
     fr = config["freq_center"]
-    print(fr)
     n = np.arange(N) - N / 2 + 1 / 2
     flist = fr + R * df / (2 * w) * np.tan(n / (N - 1) * at)
     flist_lin = (

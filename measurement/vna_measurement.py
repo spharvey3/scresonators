@@ -640,6 +640,10 @@ def power_sweep_v2(config, hw):
                 - config["db_slope"] * (freq_center / 1e9 - config["freq_0"])
             )
 
+            if config['type']=='linear':
+                min_avg = 10
+            else:
+                min_avg = 100
             # Create measurement object
             measurement = ResonatorMeasurement(
                 frequency=freq_center,
@@ -658,7 +662,7 @@ def power_sweep_v2(config, hw):
                 phase_err=phase_err,
                 kappa=kappa,
                 photon_number=n(pin, freq_center, q_total, q_coupling),
-                averages=int(max(result.averaging_factors[freq_idx], 1)),
+                averages=int(max(result.averaging_factors[freq_idx], min_avg)),
                 fit_parameters=fit_params,
                 raw_data=data,
             )
@@ -687,7 +691,7 @@ def power_sweep_v2(config, hw):
                 result.averaging_factors[freq_idx] = np.round(
                     config["avg_corr"]
                     * tau_prop
-                    / result.q_adjustment_factors[freq_idx] ** 5
+                    / result.q_adjustment_factors[freq_idx] ** 2
                 )
                 print(
                     f"Pin {power - config['att']:.1f}, N photons: {measurement.photon_number:.3g}, navg: {int(result.averaging_factors[freq_idx])}"
@@ -1038,3 +1042,22 @@ def get_default_power_sweep_config(custom_config=None):
             default_config[key] = value
 
     return default_config
+
+def write_hp_csv(results): 
+    qhp_list = []
+    for i in range(len(results.measurements)):
+        q_int = [results.measurements[i][j].q_internal for j in range(len(results.measurements[i]))]
+        qhp = np.max(q_int)
+        qhp_list.append(np.round(qhp))
+
+    fname = os.path.join(config['base_path'], 'qhp.csv')
+    with open(fname, mode='a', newline='') as file:
+        writer = csv.writer(file)
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        writer.writerow([now] + qhp_list)
+
+def new_hp_csv(path):
+    fname = os.path.join(path, 'qhp.csv')
+    with open(fname, mode='w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(['Timestamp', '10','12','14','2','16','4','6','8']) 
