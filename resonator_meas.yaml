@@ -542,3 +542,304 @@ silicon4a:
   - 7.28
   - 7.64
   - 8.13 
+siliconta1:
+  atten: -73
+  dir:
+  - - power_sweep_20250511_144949/
+  flip: true
+  max_power: 5
+  meas:
+  - silta1
+  meas_type:
+  - soc
+  min_power: -150
+  nfiles:
+  - 1
+  slope:
+  - 0
+  pitch:
+  - 10
+  - 12
+  - 14
+  - 2
+  - 16
+  - 4
+  - 6
+  - 8
+  pth: 
+  - 250503-ResSil5Ta/
+  target_freq:
+  - 6.08
+  - 6.4
+  - 6.76
+  - 7.06
+  - 7.09
+  - 7.28
+  - 7.64
+  - 8.13 
+siliconta-res2:
+  atten: -50
+  dir:
+  - - power_sweep_20250519_092608/
+  - - power_sweep_20250520_193613/
+  flip: true
+  max_power: 20
+  meas:
+  - siltares2_2
+  - siltares2
+  meas_type:
+  - vna
+  - vna
+  min_power: -150
+  nfiles:
+  - 1
+  - 1
+  slope:
+  - 0
+  - 0
+  pitch:
+  - 14
+  - 2
+  - 16
+  - 8
+  pth: 
+  - 250518-ResSil6Ta2/
+  - 250518-ResSil6Ta2_new/
+  target_freq:
+  - 6.76
+  - 7.06
+  - 7.09
+  - 8.13 
+siliconta-res1:
+  atten: -50
+  dir:
+  - - power_sweep_20250518_215602/
+  flip: true
+  max_power: 5
+  meas:
+  - siltares1
+  meas_type:
+  - vna
+  min_power: -150
+  nfiles:
+  - 1
+  slope:
+  - 0
+  pitch:
+  - 10
+  - 12
+  - 14
+  - 16
+  - 4
+  - 6
+  pth: 
+  - 250518-ResSil6Ta2/
+  target_freq:
+  - 6.08
+  - 6.4
+  - 6.76
+  - 7.09
+  - 7.28
+  - 7.64
+siliconta-res3:
+  atten: -65
+  dir:
+  - - power_sweep_20250520_100938/
+  flip: true
+  max_power: 5
+  meas:
+  - siltares3
+  meas_type:
+  - vna
+  min_power: -150
+  nfiles:
+  - 1
+  slope:
+  - 0
+  pitch:
+  - 10
+  - 12
+  - 14
+  - 16
+  - 4
+  - 6
+  - 8
+  pth: 
+  - 250518-ResSil6Ta3/
+  target_freq:
+  - 6.08
+  - 6.4
+  - 6.76
+  - 7.09
+  - 7.28
+  - 7.64
+  - 8.13 
+siliconta6res1:
+  atten: -65
+  dir:
+  - - power_sweep_combo
+  - - power_sweep_20250521_195224/
+  flip: true
+  max_power: 20
+  meas:
+  - silta6res1
+  - silta6res1_2
+  meas_type:
+  - vna
+  - vna
+  min_power: -150
+  nfiles:
+  - 1
+  - 1
+  slope:
+  - 0
+  - 0 
+  pitch:
+  - 10
+  - 12
+  - 14
+  - 2
+  - 16
+  - 4
+  - 6
+  - 8
+  pth: 
+  - 250518-ResSilTa1_new/
+  - 250518-ResSilTa1_new/
+  target_freq:
+  - 6.08
+  - 6.4
+  - 6.76
+  - 7.06
+  - 7.09
+  - 7.28
+  - 7.64
+  - 8.13 
+siliconta6_res1-low:
+  atten: -65
+  flip: true
+  max_power: 20
+  min_power: -150
+  meas_type: 
+  - vna
+  - vna
+  nfiles:
+  - 1
+  - 1
+  slope: 
+  - 0
+  - 0
+  dir:
+  - - power_sweep_20250524_135535/
+  - - power_sweep_20250524_171954/
+  meas:
+  - silta6_res1c2-lo
+  - silta6_res1c3-lo
+  pitch:
+  - 10
+  - 12
+  - 14
+  pth: 
+  - 250518-ResSilTa1_cooldown2/
+  - 250518-ResSilTa1_cooldown2/
+  target_freq:
+  - 6.08
+  - 6.4
+  - 6.76
+siliconta6_res1c2:
+  atten: -65
+  flip: true
+  max_power: 20
+  min_power: -150
+  meas_type: 
+  - vna
+  nfiles:
+  - 1
+  slope: 
+  - 0
+  dir:
+  - - power_sweep_20250525_184029/
+  meas:
+  - silta6_res1c3
+  pitch:
+  - 10
+  - 12
+  - 14
+  - 2
+  - 16
+  - 4
+  - 6
+  - 8
+  pth: 
+  - 250518-ResSilTa1_cooldown2/warmup/
+  target_freq:
+  - 6.08
+  - 6.4
+  - 6.76
+  - 7.06
+  - 7.09
+  - 7.28
+  - 7.64
+  - 8.13 
+siliconta6_res2c2:
+  atten: -65
+  flip: true
+  max_power: 20
+  min_power: -150
+  meas_type: 
+  - vna
+  nfiles:
+  - 1
+  slope: 
+  - 0
+  dir:
+  - - power_sweep_combo/
+  meas:
+  - silta6_res2c2
+  pitch:
+  - 14
+  - 2
+  - 16
+  - 8
+  pth: 
+  - 250518-ResSilTa2_cooldown2/
+  target_freq:
+  - 6.76
+  - 7.06
+  - 7.09
+  - 8.13 
+siliconta6_res1combo:
+  atten: -65
+  flip: true
+  max_power: 20
+  min_power: -150
+  meas_type: 
+  - vna
+  nfiles:
+  - 1
+  slope: 
+  - 0
+  dir:
+  - power_sweep_combo/
+  meas:
+  - silta6_res1combo
+  pitch:
+  - 10
+  - 12
+  - 14
+  - 2
+  - 16
+  - 4
+  - 6
+  - 8
+  pth: 
+  - 250518-ResSilTa1_cooldown2p
+  target_freq:
+  - 6.08
+  - 6.4
+  - 6.76
+  - 7.06
+  - 7.09
+  - 7.28
+  - 7.64
+  - 8.13 

@@ -1,0 +1,68 @@
+siliconta6_res1c2:
+  dir:
+  - power_sweep_20250524_171954/
+  - power_sweep_20250525_184029/
+  meas:
+  - silta6_res1c2
+  - silta6_res1c3
+  pitch:
+  - 10
+  - 12
+  - 14
+  - 2
+  - 16
+  - 4
+  - 6
+  - 8
+  pth: 
+  - 250518-ResSilTa1_cooldown2/
+  - 250518-ResSilTa1_cooldown2/warmup/
+  target_freq:
+  - 6.08
+  - 6.4
+  - 6.76
+  - 7.06
+  - 7.09
+  - 7.28
+  - 7.64
+  - 8.13 
+siliconta6_res2c2:
+  dir:
+  - power_sweep_combo/
+  meas:
+  - silta6_res2c2
+  pitch:
+  - 14
+  - 2
+  - 16
+  - 8
+  pth: 
+  - 250518-ResSilTa2_cooldown2/
+  target_freq:
+  - 6.76
+  - 7.06
+  - 7.09
+  - 8.13 
+siliconta6_res3c2:
+  dir:
+  - power_sweep_20250526_211305/
+  meas:
+  - silta6_res3c2
+  pitch:
+  - 10
+  - 12
+  - 14
+  - 16
+  - 4
+  - 6
+  - 8
+  pth: 
+  - 250518-ResSilTa3_cooldown2/
+  target_freq:
+  - 6.08
+  - 6.4
+  - 6.76
+  - 7.09
+  - 7.28
+  - 7.64
+  - 8.13 

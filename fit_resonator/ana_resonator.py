@@ -194,17 +194,19 @@ class ResonatorData:
             data["freqs"] = data["fpts"][0]
             data["amps"] = data["mags"][0]
             data["phases"] = data["phases"] - slope * data["freqs"]
-        elif meas_type == "soc":
+        elif meas_type == "soc_old":
             data["phases"] = np.unwrap(data["phases"])
             # Apply phase correction based on slope
             if True:  # This condition seems to always be true in the original code
-                data["phases"] = data["phases"][0] + slope * data["xpts"][0]
+                data["phases"] = data["phases"] + slope * data["xpts"]
             else:
                 data["phases"] = data["phases"][0] - slope * data["xpts"][0]
 
             data["phases"] = np.unwrap(data["phases"])
-            data["amps"] = np.log10(data["amps"][0]) * 20
-            data["freqs"] = data["xpts"][0] * 1e6
+            data["amps"] = np.log10(data["amps"]) * 20
+            data["freqs"] = data["xpts"] * 1e6
+        elif meas_type == "soc":
+            data["freqs"] = data["xpts"] * 1e6
 
         return data, attrs
 
@@ -460,7 +462,7 @@ class ResonatorFitter:
         pre: str = "circle",
         fix_freq: bool = False,
         fit_Qc: bool = True,
-        Qc_fix = 1e6,
+        Qc_fix=1e6,
     ) -> Tuple[List[float], List[float]]:
         """
         Fit a resonator model to data.
@@ -486,7 +488,7 @@ class ResonatorFitter:
         my_resonator.from_columns(data["freqs"], data["amps"], data["phases"])
         my_resonator.fix_freq = fix_freq
         my_resonator.Qc_fix = Qc_fix
-        
+
         # Set fit parameters
         MC_iteration = 4
         MC_rounds = 1e3
@@ -499,7 +501,7 @@ class ResonatorFitter:
 
         # Set preprocessing method
         my_resonator.preprocess_method = pre
-        #my_resonator.filepath = "./"
+        # my_resonator.filepath = "./"
         my_resonator.filepath = "/imgs/"
 
         # Perform fit
@@ -786,15 +788,16 @@ class ResonatorAnalyzer:
                     elif meas_type == "vna_old":
                         power.append(data["vna_power"][0])
                     else:
-                        if attrs["gain"] < min_power:
+                        par = attrs["config"]["power"]
+                        if par < min_power:
                             continue
-                        power.append(np.log10(attrs["gain"]) * 20 - 30)
+                        power.append(par)
 
                     print(power[-1])
                     try:
                         # Fit resonator
                         output = ResonatorFitter.fit_resonator(
-                            data, fname, output_path, plot=plot, fix_freq=True
+                            data, fname, output_path, plot=plot, fix_freq=False
                         )
                         params.append(output[0])
                         err.append(output[1])
@@ -815,6 +818,21 @@ class ResonatorAnalyzer:
                 res_params[i][key] = np.array(res_params[i][key])
 
         return res_params, file_list
+
+    @staticmethod
+    def analyze_sweep(data_pth, img_pth, name, params, ind, plot=True):
+
+        return analyze_sweep_gen(
+            [params[dir][ind]],
+            data_pth,
+            img_pth,
+            name=name,
+            plot=plot,
+            nfiles=params["nfiles"][ind],
+            meas_type=params["meas_type"][ind],
+            slope=params["slope"][ind],
+            fitphase=True,
+        )
 
 
 class ResonatorPlotter:
@@ -881,7 +899,96 @@ class ResonatorPlotter:
             base_path: Base path for output files
             use_pitch: Whether to use pitch for labels
         """
-        sns.set_palette("coolwarm", len(res_params))
+        sns.set_palette("YlGnBu", len(res_params))
+        plt.rcParams["lines.markersize"] = 4
+
+        # Create plots for Q_i vs. power
+        fig, ax = plt.subplots(2, 1, figsize=(6, 6), sharex=True)
+        fig2, ax2 = plt.subplots(2, 1, figsize=(6, 6), sharex=True)
+
+        for i in range(len(res_params)):
+            if use_pitch:
+                label = cfg["pitch"][i]
+            else:
+                label = round(np.min(res_params[i]["freqs"] / 1e9), 4)
+
+            # Filter by power range
+            inds = np.where(
+                (res_params[i]["pow"][0] >= cfg["min_power"])
+                & (res_params[i]["pow"][0] <= cfg["max_power"])
+            )
+
+            # Plot Q_i vs. power
+            ax[0].semilogy(
+                res_params[i]["pow"][0][inds],
+                res_params[i]["qi"][0][inds],
+                ".-",
+                label=label,
+            )
+            ax[1].semilogy(
+                res_params[i]["pow"][0][inds],
+                res_params[i]["qi"][0][inds] / np.nanmax(res_params[i]["qi"][0]),
+                ".-",
+                label=label,
+            )
+
+            # Plot frequency and Q_c vs. power
+            ax2[0].plot(
+                res_params[i]["pow"][0][inds],
+                1e6
+                * (
+                    res_params[i]["freqs"][0][inds]
+                    / np.nanmin(res_params[i]["freqs"][0][inds])
+                    - 1
+                ),
+                ".-",
+                label=label,
+            )
+            ax2[1].plot(
+                res_params[i]["pow"][0][inds],
+                res_params[i]["qc"][0][inds] / np.nanmin(res_params[i]["qc"][0][inds]),
+                ".-",
+                label=label,
+            )
+
+        # Set labels and legends
+        ax[1].set_xlabel("Power (dBm)")
+        ax[0].set_ylabel("$Q_i$")
+        ax[1].set_ylabel("$Q_i/Q_{i,max}$")
+        ax[1].legend(title="Gap", fontsize=8)
+
+        ax2[1].set_xlabel("Power (dBm)")
+        ax2[0].set_ylabel("$\Delta f/f$ (ppm)")
+        ax2[1].set_ylabel("$Q_c/Q_{c,min}$")
+
+        # Adjust layout and save
+        fig.tight_layout()
+        fig2.tight_layout()
+
+        try:
+            fig2.savefig(base_path + cfg["meas"][ind] + "_Qcfreq_pow.png", dpi=300)
+            fig.savefig(base_path + cfg["meas"][ind] + "_Qi_pow.png", dpi=300)
+        except Exception as e:
+            print(f"Error in plotting: {e}")
+
+    @staticmethod
+    def plot_power2(
+        res_params: List[Dict[str, np.ndarray]],
+        cfg: Dict[str, Any],
+        ind: int,
+        base_path: str,
+        use_pitch: bool = True,
+    ) -> None:
+        """
+        Plot resonator parameters vs. power.
+
+        Args:
+            res_params: List of resonator parameter dictionaries
+            cfg: Configuration dictionary
+            base_path: Base path for output files
+            use_pitch: Whether to use pitch for labels
+        """
+        sns.set_palette("YlGnBu", len(res_params))
         plt.rcParams["lines.markersize"] = 4
 
         # Create plots for Q_i vs. power
@@ -1257,7 +1364,7 @@ class ResonatorPlotter:
                     fname = file_list[i][j][k]
                     try:
                         # Load and preprocess data
-                        data, _ = ResonatorData.load_resonator(
+                        data, attrs = ResonatorData.load_resonator(
                             fname, path, nfiles, slope, meas_type, ends, fix_freq=True
                         )
                         data = ResonatorData.fit_phase(data)
@@ -1268,8 +1375,8 @@ class ResonatorPlotter:
                     # Skip powers outside range
                     if meas_type == "vna":
                         if (
-                            data["vna_power"][0] > max_power
-                            or data["vna_power"][0] < min_power
+                            attrs["vna_power"] > max_power
+                            or attrs["vna_power"] < min_power
                         ):
                             continue
 

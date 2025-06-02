@@ -3,6 +3,7 @@ import re
 import json
 import numpy as np
 import yaml
+import os
 
 """Reopen saved data"""
 
@@ -12,7 +13,8 @@ def prev_data(expt_path, filename):
     with SlabFile(temp_data_file) as a:
         attrs = dict()
         for key in list(a.attrs):
-            attrs.update({key: json.loads(a.attrs[key])})
+            # attrs.update({key: json.loads(a.attrs[key])})
+            attrs.update({key: a.attrs[key]})
         keys = list(a)
         temp_data = dict()
         for key in keys:
@@ -79,3 +81,27 @@ def load(file_name):
         if isinstance(value, list):
             cfg[key] = np.array(value)
     return cfg
+
+
+def get_params(yml_file, meas, pth=""):
+
+    with open(yml_file, "r") as file:
+        sample_dict = yaml.safe_load(file)
+
+    matching_keys = [
+        key
+        for key, items in sample_dict.items()
+        for item in items["meas"]
+        if item == meas
+    ]
+    sample = matching_keys[0] if matching_keys else None
+
+    ind = sample_dict[sample]["meas"].index(meas)
+    params = sample_dict[sample]
+
+    # data_pth = os.path.join(pth, "Data", params["pth"][ind], params["dir"][ind])
+    # data_pth = pth + folder + "Data/" + params["pth"][ind]
+    data_pth = os.path.join(pth, "Data", params["pth"][ind])
+    folder = params["dir"][ind]
+    img_name = params["pth"][ind][0:-1] + params["meas"][ind]
+    return params, data_pth, folder, img_name, ind
