@@ -318,7 +318,6 @@ def do_vna_scan(VNA, file_name, expt_path, cfg, spar="s21", att=0, plot=True):
         cfg,
         scan_type="standard",
         spar=spar,
-        att=att,
         plot=plot,
     )
 
