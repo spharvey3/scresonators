@@ -24,7 +24,7 @@ def find_peaks(data, prom=0.1):
     from scipy.ndimage import gaussian_filter1d
 
     min_dist = 10e6  # minimum distance between peaks, may need to be edited if things are really close
-    max_width = 15e6  # maximum width of peaks in MHz, may need to be edited if peaks are off
+    max_width = 30e6  # maximum width of peaks in MHz, may need to be edited if peaks are off
     freq_sigma = 3  # sigma for gaussian filter
 
     
