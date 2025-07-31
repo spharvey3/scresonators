@@ -30,14 +30,16 @@ class ResonatorMeasurement:
     q_total_amp: float  # Total quality factor
     q_internal_amp: float  # Internal quality factor
     q_coupling_amp: float  # Coupling quality factor
+    phase_amp: float
 
-    # Alternative fit results (if available)
+    # Circle fit results (if available)
     q_total: Optional[float] = None
     q_internal: Optional[float] = None
     q_coupling: Optional[float] = None
     frequency: Optional[float] = None
+    phase: Optional[float] = None
 
-    # Error parameters for alternative fit (if available)
+    # Error parameters for circle fit (if available)
     q_total_err: Optional[float] = None
     q_internal_err: Optional[float] = None
     q_coupling_err: Optional[float] = None
@@ -144,6 +146,7 @@ def _perform_initial_scan(hw, expt_path, result, freq_idx, power, att, fname, co
     # Calculate quality factors
     q_internal_amp = fit_params[1] * 1e4
     q_coupling_amp = fit_params[2] * 1e4
+    phase_amp = fit_params[3]
 
     # Calculate photon number
     pin = (
@@ -161,6 +164,7 @@ def _perform_initial_scan(hw, expt_path, result, freq_idx, power, att, fname, co
         q_total_amp=q_total_amp,
         q_internal_amp=q_internal_amp,
         q_coupling_amp=q_coupling_amp,
+        phase_amp=phase_amp,
         kappa=kappa,
         photon_number=photon_number,
         averages=1,
@@ -273,18 +277,21 @@ def _should_stop_measuring(result, freq_idx, next_time):
     """
     # print(result.q_adjustment_factors[freq_idx])
     # print(next_time)
-    low_qother = True
+    low_qother = False
     if low_qother:
         thresh = [0.02, 0.005, -0.05, -0.15]
+        times = [500, 800, 1200, 1800]
     else:
         thresh = [0.05, 0.015, -0.0, -0.02]
-
+        times = [500, 800, 1200, 1800, 3600]
+    times = 2*np.array(times)
+    
     return (
-        (result.q_adjustment_factors[freq_idx] > 1 - thresh[3] and next_time > 900)
-        or (result.q_adjustment_factors[freq_idx] > 1 - thresh[2] and next_time > 1800)
-        or (result.q_adjustment_factors[freq_idx] > 1 - thresh[1] and next_time > 2700)
-        or (result.q_adjustment_factors[freq_idx] > 1 - thresh[0] and next_time > 3800)
-        or next_time > 7200
+        (result.q_adjustment_factors[freq_idx] > 1 - thresh[3] and next_time > times[0])
+        or (result.q_adjustment_factors[freq_idx] > 1 - thresh[2] and next_time > times[1])
+        or (result.q_adjustment_factors[freq_idx] > 1 - thresh[1] and next_time > times[2])
+        or (result.q_adjustment_factors[freq_idx] > 1 - thresh[0] and next_time > times[3])
+        or next_time > times[4]
     )
 
 
@@ -418,13 +425,13 @@ def power_sweep_v2(config, hw):
                 result.measurements[freq_idx][power_idx] = measurement
 
                 # Store parameters for next iteration
-                prev_q = measurement.q_total_amp
+                prev_q = measurement.q_total
                 prev_fit_params = measurement.fit_parameters
 
             # Use parameters from previous power point
             else:
                 prev_measurement = result.measurements[freq_idx][power_idx - 1]
-                prev_q = prev_measurement.q_total_amp
+                prev_q = prev_measurement.q_total
                 prev_fit_params = prev_measurement.fit_parameters
 
             # Determine scan parameters based on power index
@@ -433,16 +440,21 @@ def power_sweep_v2(config, hw):
             )
 
             # Configure VNA scan for this power point
+            if config['type']=='linear':
+                min_avg = 10
+            else:
+                min_avg = 30
             scan_config = {
                 "freq_center": float(result.current_frequencies[freq_idx]),
                 "span": span,
                 "npoints": npoints,
                 "power": power,
                 "bandwidth": config["bandwidth"],
-                "averages": int(max(result.averaging_factors[freq_idx], 100)),
+                "averages": int(max(result.averaging_factors[freq_idx], min_avg)),
                 "kappa": measurement.kappa / 1e6,
                 "slope": config["slope"],
             }
+            print(scan_config['freq_center'])
 
             config["pin"] = (
                 power
@@ -476,7 +488,7 @@ def power_sweep_v2(config, hw):
 
             # Calculate new averaging based on photon number
             if power_idx > 0:
-                result.q_adjustment_factors[freq_idx] = measurement.q_total_amp / prev_q
+                result.q_adjustment_factors[freq_idx] = measurement.q_total / prev_q
 
             if "avg_corr" in config:
                 tau_prop = (10 ** (-measurement.power_at_device / 10)* (measurement.q_coupling_amp / measurement.q_total_amp) ** 2* 1e-11)
@@ -526,36 +538,37 @@ def _plot_qi_vs_photon(measurements, freq_idx, expt_path):
     # Get data for plotting
     power_indices = sorted(measurements[freq_idx].keys())
     photon_numbers = [measurements[freq_idx][i].photon_number for i in power_indices]
-    qi_values = [measurements[freq_idx][i].q_internal_amp for i in power_indices]
-    qc_values = [measurements[freq_idx][i].q_coupling_amp for i in power_indices]
+    qi_values_amp = [measurements[freq_idx][i].q_internal_amp for i in power_indices]
+    qc_values_amp = [measurements[freq_idx][i].q_coupling_amp for i in power_indices]
 
     # Get alternative fit data if available
-    qi_alt_values = []
-    qc_alt_values = []
+    qi_values = []
+    qc_values = []
     for i in power_indices:
         if measurements[freq_idx][i].q_internal is not None:
-            qi_alt_values.append(measurements[freq_idx][i].q_internal)
-            qc_alt_values.append(measurements[freq_idx][i].q_coupling)
+            qi_values.append(measurements[freq_idx][i].q_internal)
+            qc_values.append(measurements[freq_idx][i].q_coupling)
 
     # Create plot
     fig, ax = plt.subplots(1, 2, figsize=(8, 3))
 
     # Plot Qi vs photon number
-    ax[0].semilogx(photon_numbers, qi_values, "o-", label="Primary fit")
-    if qi_alt_values:
+    #ax[0].semilogx(photon_numbers, qi_values, "o-", label="Primary fit")
+    if qi_values:
         ax[0].semilogx(
-            photon_numbers[: len(qi_alt_values)], qi_alt_values, "s--", label="Alt fit"
+            photon_numbers[: len(qi_values)], qi_values, "s--", label="Fit"
         )
 
     # Fit Qi vs power to an exponential if we have enough points
-    if len(qi_values) > 6:
+    if len(qi_values_amp) > 6:
         try:
-            min_freq = measurements[freq_idx][power_indices[0]].frequency_amp
+            min_freq = measurements[freq_idx][power_indices[0]].frequency
             q_fitn = lambda n, Qtls0, Qoth, nc, beta: ana_tls.Qtotn(
                 n, 0.04, min_freq, Qtls0, Qoth, nc, beta
             )
-            p = [np.min(qi_values), np.max(qi_alt_values), 3, 0.4]
-            p, err = curve_fit(q_fitn, photon_numbers, qi_alt_values, p0=p)
+            p = [np.min(qi_values), np.max(qi_values), 3, 0.4]
+            #print(p)
+            p, err = curve_fit(q_fitn, photon_numbers, qi_values, p0=p)
             ax[0].plot(
                 photon_numbers,
                 q_fitn(np.array(photon_numbers), *p),
@@ -586,21 +599,21 @@ def _plot_qi_vs_photon(measurements, freq_idx, expt_path):
     ax[0].set_xlabel("Number of Photons")
     ax[0].set_ylabel("Internal Quality Factor ($Q_i$)")
     ax[0].set_title(
-        f"Frequency: {measurements[freq_idx][power_indices[0]].frequency_amp/1e9:.5f} GHz"
+        f"Frequency: {measurements[freq_idx][power_indices[0]].frequency/1e9:.5f} GHz"
     )
     # if len(qi_alt_values) > 0:
     #     ax[0].legend()
 
     # Plot Qc vs photon number
-    ax[1].semilogx(photon_numbers, qc_values, "o-", label="Primary fit")
-    if qc_alt_values:
+    ax[1].semilogx(photon_numbers, qc_values_amp, "o-", label="Primary fit")
+    if qc_values:
         ax[1].semilogx(
-            photon_numbers[: len(qc_alt_values)], qc_alt_values, "s--", label="Alt fit"
+            photon_numbers[: len(qc_values)], qc_values, "s--", label="Alt fit"
         )
 
     ax[1].set_xlabel("Number of Photons")
     ax[1].set_ylabel("Coupling Quality Factor ($Q_c$)")
-    if len(qc_alt_values) > 0:
+    if len(qc_values) > 0:
         ax[1].legend()
 
     fig.tight_layout()
@@ -611,8 +624,9 @@ def _plot_qi_vs_photon(measurements, freq_idx, expt_path):
     sns.set_palette("crest", npl)
     fig, ax = plt.subplots(2, 1, figsize=(8, 6), sharex=True)
     for i, d in enumerate(np.arange(npl)):
+        mf = np.mean(measurements[freq_idx][0].raw_data['freqs'])
         d = measurements[freq_idx][i].raw_data
-        f = (d["freqs"] - np.mean(d["freqs"])) * 1e3
+        f = (d["freqs"] - mf) /1e3
         y = d["amps"]  # -np.max(d['amps'])
         ax[0].plot(f, y, label=f"{i}")
         ax[1].plot(f, d["phases"] - np.mean(d["phases"]), label=f"{i}")
@@ -621,7 +635,7 @@ def _plot_qi_vs_photon(measurements, freq_idx, expt_path):
     ax[1].set_ylabel("Phase (rad)")
     ax[1].set_xlabel("Frequency Offset (kHz)")
     ax[0].set_title(
-        f"Frequency: {measurements[freq_idx][power_indices[0]].frequency_amp:.5f} GHz"
+        f"Frequency: {measurements[freq_idx][power_indices[0]].frequency/1e9:.5f} GHz"
     )
     fig.savefig(os.path.join(expt_path, f"Data_{freq_idx}.png"))
     plt.close(fig)
@@ -798,7 +812,7 @@ def write_hp_csv(results, config):
     fname = os.path.join(config['base_path'], 'qhp.csv')
     with open(fname, mode='a', newline='') as file:
         writer = csv.writer(file)
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         writer.writerow([now] + qhp_list)
 
 def new_hp_csv(path):
@@ -822,6 +836,7 @@ def _perform_fits(
             data, power, fitparams, plot=False
         )
         q_coupling_amp = fit_params[2] * 1e4
+        phase_amp = fit_params[3]
     else:
         # For higher power indices, use mean of previous coupling Q values
         qc_values = [
@@ -830,22 +845,28 @@ def _perform_fits(
             if i < power_idx
         ]
         qc_best = np.mean(qc_values) if qc_values else prev_fit_params[2] * 1e4
+        phase_values = [
+            result.measurements[freq_idx][i].phase_amp
+            for i in range(4, 8)
+            if i < power_idx
+        ]
+        phase_best = np.mean(phase_values) if phase_values else prev_fit_params[3]
 
         fitparams = [
             result.current_frequencies[freq_idx],
             prev_fit_params[1],
-            prev_fit_params[3],
             np.max(10 ** (data["amps"] / 20)),
         ]
         freq_center, q_total_amp, kappa, fit_params = fit_resonator(
-            data, power, fitparams, qc_best
+            data, power, fitparams, [qc_best,phase_best]
         )
         q_coupling_amp = qc_best
+        phase_amp = phase_best
 
-    # Perform alternative fitting
+    # Perform circle fitting
     try:
         data = ResonatorData.fit_phase(data)
-        if power_idx < 8:
+        if power_idx < 100:
             output = ResonatorFitter.fit_resonator(
                 data, fname, expt_path, plot=True, fix_freq=False
             )
@@ -880,7 +901,7 @@ def _perform_fits(
     except Exception as e:
         print(f"Alternative fit failed: {str(e)}")
         q_total = q_coupling = freq = q_internal = None
-        phase_err = qi_err = qc_err = f_err = q_err = None
+        phase_err =phase = qi_err = qc_err = f_err = q_err = None
 
         # Calculate photon number
     pin = (
@@ -892,7 +913,7 @@ def _perform_fits(
     if config['type']=='linear':
         min_avg = 10
     else:
-        min_avg = 100
+        min_avg = 30
 
     # Create measurement object
     measurement = ResonatorMeasurement(
@@ -902,17 +923,19 @@ def _perform_fits(
         q_total_amp=q_total_amp,
         q_internal_amp=fit_params[1] * 1e4,
         q_coupling_amp=q_coupling_amp,
+        phase_amp=phase_amp,
         q_total=q_total,
         q_internal=q_internal,
         q_coupling=q_coupling,
         frequency=freq,
+        phase=phase,
         q_internal_err=qi_err,
         q_total_err=q_err,
         q_coupling_err=qc_err,
         frequency_err=f_err,
         phase_err=phase_err,
         kappa=kappa,
-        photon_number=n(pin, freq_center, q_total_amp, q_coupling_amp),
+        photon_number=n(pin, freq_center, q_total, q_coupling),
         averages=int(max(result.averaging_factors[freq_idx], min_avg)),
         fit_parameters=fit_params,
         raw_data=data,

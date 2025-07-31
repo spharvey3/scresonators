@@ -76,14 +76,16 @@ def plot_scan(freq, amps, phase, pars=None, pinit=None, power=None, slope=None):
     # plt.show()
 
 
-def fit_resonator(data, power, fitparams=None, qc=None, plot=False):
+def fit_resonator(data, power, fitparams=None, set_pars=None, plot=False):
 
     # Convert amplitude from dB to linear scale
     amps_linear = 10 ** (data["amps"] / 20)
-    # f0, Qi, Qe, phi, scale, a0, slope # Qi/Qe in units of 10k
-    if qc is not None:
-        hangerfit = lambda f, f0, qi, phi, scale: fitter.hangerS21func(
-            f, f0, qi, qc / 1e4, phi, scale
+    # f0, Qi, Qe, phi, scale, # Qi/Qe in units of 10k
+    if set_pars is not None:
+        qc = set_pars[0]
+        phase = set_pars[1]
+        hangerfit = lambda f, f0, qi, scale: fitter.hangerS21func(
+            f, f0, qi, qc / 1e4, phase, scale
         )
 
         pars, err = curve_fit(hangerfit, data["freqs"], amps_linear, p0=fitparams)
@@ -94,8 +96,8 @@ def fit_resonator(data, power, fitparams=None, qc=None, plot=False):
         err = np.sqrt(np.diag(err))
         # print('f error: ', err[0], 'Qi error: ', err[1], 'phi error: ', err[2], 'scale error: ', err[3])
         print(f"Qi err: {err[1]/pars[1]}")
-        pars = [pars[0], pars[1], qc / 1e4, pars[2], pars[3]]
-        fitparams = [pars[0], pars[1], qc / 1e4, pars[3], pars[4]]
+        pars =      [pars[0], pars[1], qc / 1e4, phase, pars[2]]
+        fitparams = [pars[0], pars[1], qc / 1e4, phase, pars[2]]
     else:
         if fitparams is None:
             min_freq = data["freqs"][np.argmin(amps_linear)]
