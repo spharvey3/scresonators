@@ -1,0 +1,100 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scresonators"
+version = "0.1.0"
+description = "A namespace package for measuring and fitting superconducting resonator data"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {file = "LICENSE"}
+authors = [
+    {name = "Boulder Cryogenic Quantum Testbed"},
+]
+maintainers = [
+    {name = "Boulder Cryogenic Quantum Testbed"},
+]
+keywords = [
+    "superconducting resonators",
+    "quantum computing",
+    "microwave measurements",
+    "fitting",
+    "physics",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+    "numpy>=1.20.0",
+    "scipy>=1.7.0",
+    "matplotlib>=3.3.0",
+    "lmfit>=1.0.0",
+    "attrs>=21.0.0",
+    "inflect>=5.0.0",
+    "pyvisa>=1.11.0",
+    "pyvisa-py>=0.5.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=6.0",
+    "pytest-cov>=2.0",
+    "black>=21.0",
+    "flake8>=3.8",
+    "mypy>=0.800",
+]
+docs = [
+    "sphinx>=4.0",
+    "sphinx-rtd-theme>=0.5",
+]
+jupyter = [
+    "jupyter>=1.0.0",
+    "ipykernel>=6.0.0",
+    "notebook>=6.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/Boulder-Cryogenic-Quantum-Testbed/scresonators"
+Repository = "https://github.com/Boulder-Cryogenic-Quantum-Testbed/scresonators.git"
+Issues = "https://github.com/Boulder-Cryogenic-Quantum-Testbed/scresonators/issues"
+
+[tool.setuptools]
+packages = ["scresonators", "scresonators.fit_resonator", "scresonators.measurement", "scresonators.plotting"]
+
+[tool.setuptools.package-dir]
+"scresonators.fit_resonator" = "fit_resonator"
+"scresonators.measurement" = "measurement"
+"scresonators.plotting" = "plotting"
+
+[tool.black]
+line-length = 88
+target-version = ['py38']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88

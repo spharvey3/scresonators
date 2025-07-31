@@ -1,0 +1,19 @@
+# Core scientific computing dependencies
+numpy>=1.20.0
+scipy>=1.7.0
+matplotlib>=3.3.0
+
+# Fitting and optimization
+lmfit>=1.0.0
+
+# Data structures and utilities
+attrs>=21.0.0
+inflect>=5.0.0
+
+# Instrument communication (for measurement module)
+pyvisa>=1.11.0
+pyvisa-py>=0.5.0
+
+# Optional: Jupyter notebook support (commonly used with this type of package)
+jupyter>=1.0.0
+ipykernel>=6.0.0

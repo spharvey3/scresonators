@@ -1,0 +1,40 @@
+# Include the README and license files
+include README.md
+include LICENSE
+include requirements.txt
+include pyproject.toml
+
+# Include configuration files
+include *.yml
+include *.yaml
+recursive-include configs *.yml *.yaml
+
+# Include example notebooks and scripts
+include *.ipynb
+recursive-include examples *
+recursive-include dbs *.ipynb
+
+# Include test files
+recursive-include test *
+recursive-include tests *
+
+# Include source files
+recursive-include fit_resonator *.py
+recursive-include measurement *.py *.h *.dll
+recursive-include plotting *.py
+recursive-include src *
+
+# Exclude compiled Python files
+global-exclude *.pyc
+global-exclude *.pyo
+global-exclude *~
+global-exclude *.so
+global-exclude .DS_Store
+global-exclude __pycache__
+
+# Exclude development and build artifacts
+prune .git
+prune .github
+prune build
+prune dist
+prune *.egg-info
