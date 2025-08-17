@@ -2,6 +2,8 @@
 
 This is a namespace package for the scresonators library, which provides tools for measuring and fitting superconducting resonator data.
 
+This is forked from https://github.com/Boulder-Cryogenic-Quantum-Testbed/scresonators, who wrote all of the fitting code. We have fixed a few bugs and added measurement code on top. 
+
 ## Package Structure
 
 The package is organized into two main subpackages:
