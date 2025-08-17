@@ -284,7 +284,7 @@ def _should_stop_measuring(result, freq_idx, next_time):
     else:
         thresh = [0.05, 0.015, -0.0, -0.02]
         times = [500, 800, 1200, 1800, 3600]
-    times = 2*np.array(times)
+    times = 6*np.array(times)
     
     return (
         (result.q_adjustment_factors[freq_idx] > 1 - thresh[3] and next_time > times[0])
