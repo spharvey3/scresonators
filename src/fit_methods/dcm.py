@@ -46,7 +46,7 @@ class DCM(FitMethod):
 
 
     def find_initial_guess(self, fdata: np.ndarray, sdata: np.ndarray) -> lmfit.Parameters:
-        x_c, y_c, r = find_circle(np.real(sdata), np.imag(sdata))#the circle diameter is 2*r = Q/Qc
+        
         """
         Finds the initial guess of the fitting parameters.
         
@@ -68,6 +68,9 @@ class DCM(FitMethod):
         gradS = np.gradient(filtered_data, fdata)
 
         chiFunction = partitionFrequencyBand(fdata, gradS)
+        x_c, y_c, r = find_circle(np.real(sdata), np.imag(sdata))#the circle diameter is 2*r = Q/Qc
+        phase_guess = np.angle(x_c + 1j*y_c)
+        #print(f'phi guess: {phase_guess}')
 
         # chiFunction = np.zeros(len(gradSmagnitude))
         # cutoff = 0.5*(np.min(gradSmagnitude)+np.max(gradSmagnitude))
@@ -80,7 +83,7 @@ class DCM(FitMethod):
         gradSmagnitude = np.abs(gradS)
         f_c = fdata[np.argmax(gradSmagnitude)-1]#uncertainties can't be calculated when this guess is too good!!!
         Q_guess = 2*f_c/(linewidth)
-        print(f'Q_guess: {Q_guess}')
+        #print(f'Q_guess: {Q_guess}')
         Qc_guess = Q_guess/(2*r)
 
         # Create an lmfit.Parameters object to store initial guesses
@@ -88,7 +91,7 @@ class DCM(FitMethod):
         params.add('Q', value=Q_guess, min=0, max=1e8)
         params.add('Qc', value=Qc_guess, min=0, max=1e8)
         params.add('f0', value=f_c, min=f_c*0.9, max=f_c*1.1)
-        params.add('phi', value=-1.3, min=-np.pi, max=np.pi)
+        params.add('phi', value=phase_guess, min=-np.pi, max=np.pi)
 
         return params
 

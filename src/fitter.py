@@ -23,6 +23,7 @@ class Fitter:
         self.remove_elec_delay = kwargs.get('remove_delay', True)
         self.preprocess_circle = kwargs.get('preprocess_circle', True)
         self.preprocess_linear = kwargs.get('preprocess_linear', False)
+        #self.fit_Qc = kwargs.get('fit_Qc', True)
         self.normalize = kwargs.get('normalize', 4)
         self.MC_rounds = kwargs.get('MC_rounds', 1000)
         self.MC_step_const = kwargs.get('MC_step_const', 0.05)
@@ -31,6 +32,7 @@ class Fitter:
         self.databg = kwargs.get('databg', None)
         self.plot_results = kwargs.get('plotstyle', None)#for later implementation of optional plotting post fitting
         self.delay_guess = kwargs.get('delay_guess', None)
+        self.Qc_set = kwargs.get('Qc_set', None)
         self.Ql_guess = None
         self.fr_guess = None
         self.theta_0 = None
@@ -60,7 +62,6 @@ class Fitter:
             #rotate and scale the off-resonant point to a prescribed anchor point
             sdata = self.anchor_to_point(fdata, sdata)
 
-
         ##############################################################################
         #Initial guess for fitting parameters
         ##############################################################################
@@ -71,6 +72,12 @@ class Fitter:
             params = self.fit_method.find_initial_guess(self = self.fit_method ,fdata = fdata,sdata = sdata)
             #very weird that self = self.fit_method needs to be passed
         init_guess=params
+        if self.Qc_set is not None:
+            params['Qc'].value = self.Qc_set[0]
+            params['phi'].value = self.Qc_set[1]
+            params['Qc'].vary = False
+            params['phi'].vary = False
+
         #move this to function
         kappa = params['f0'].value / params['Q'].value
         mask = np.abs(fdata - params['f0'].value) < kappa
@@ -210,7 +217,7 @@ class Fitter:
 
     def find_delay(self, fdata: np.ndarray, sdata: np.ndarray):
         """
-        Modified version of the Criclefit method described in Probst.
+        Modified version of the circle fit method described in Probst.
 
         Adjusts electrical delay such that the offset phase most closely fits an arctangent.
 
