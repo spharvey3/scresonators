@@ -7,8 +7,9 @@ import numpy as np
 #TODO: need to improve label placement when specified by user
 
 def makeSummaryFigure():
-    fig = plt.figure(layout='constrained')
-    ax = fig.subplot_mosaic([['smith', 'mag'], ['smith', 'phase']])
+    fig = plt.figure(layout='constrained', figsize=(8, 5))
+    # Modified layout: smith gets 2/3 width, mag/phase share 1/3 width
+    ax = fig.subplot_mosaic([['smith', 'smith', 'mag'], ['smith', 'smith', 'phase']])
     fig.parameterAnnotation = None
 
     ax['mag'].sharex(ax['phase'])
@@ -57,7 +58,7 @@ def summaryPlot(fdata, sdata, **kwargs):
     fig = plt.gcf()
     ax_list = fig.get_axes()
     ax = AxesListToDict(ax_list)
-    fdata = 1e6*(fdata - np.mean(fdata)) #center frequency data around 0 for better smith chart plotting
+    #fdata = 1e6*(fdata - np.mean(fdata)) #center frequency data around 0 for better smith chart plotting
     #rf.plotting.plot_smith(sdata, ax=ax['smith'], x_label=None, y_label=None, title='Smith Chart', **kwargs)
     ax['smith'].plot(np.real(sdata), np.imag(sdata), **kwargs)
     ax['smith'].set_xlabel('Re($S_{21}$)')
@@ -97,7 +98,7 @@ def annotateParam(param, name):
     val, stderr = round_measured_value(val, stderr)
 
     # Format based on the ratio of stderr to val
-    if abs(stderr/val) >= 1/100:  # stderr is within a factor of 100 of val
+    if abs(stderr/val) >= 1/500:  # stderr is within a factor of 100 of val
         if abs(val) < 1000:  # Don't use scientific notation for numbers < 1000
             param_text = f'{name}: {val:.3f} $\\pm$ {stderr:.3f}'
         else:
@@ -127,27 +128,40 @@ def annotateParam(param, name):
             
             param_text = f'{name}: {val_part} $\\pm$ {stderr_part}'
 
-    #TODO: add a dictionary to convert parameter names to LaTeX symbols
-    if fig.parameterAnnotation == None:
-        fig.parameterAnnotation = ax['phase'].annotate(
-            param_text,
-            xy=(2, 1), xycoords='axes fraction',  # (0,1) is top-left of the axes
-            annotation_clip=False,
-            ha='right', va='top'
-        )
-    else:
-        text = fig.parameterAnnotation.get_text()
-        text = text+str('\n'+param_text)
-        fig.parameterAnnotation.set_text(text)
-        # Move annotation to the right of the right side of the plot
-        fig.parameterAnnotation.set_position((1.05, 1))
-        fig.parameterAnnotation.set_ha('left')
-        fig.parameterAnnotation.set_va('top')
-        #fig.parameterAnnotation.set_xycoords('axes fraction')
-
-        x_pos, y_pos = fig.parameterAnnotation.get_position()
-        fig.parameterAnnotation.set_position((x_pos, y_pos-0.125))
-        #TODO: query the font height & line spacing for the y-position adjustment
+    if param.name=='phi':
+        param_text = param_text + ' rad'
+    elif param.name=='f0':
+        param_text = param_text + ' GHz'
+    
+    # Initialize parameter tracking if not exists
+    if not hasattr(fig, 'parameterAnnotations'):
+        fig.parameterAnnotations = {'col1': [], 'col2': [], 'col3': []}
+        fig.parameterCount = 0
+    
+    # Add parameter to appropriate column (cycling through 3 columns)
+    col_num = (fig.parameterCount % 3) + 1
+    col_key = f'col{col_num}'
+    fig.parameterAnnotations[col_key].append(param_text)
+    fig.parameterCount += 1
+    
+    # Clear existing annotations
+    if hasattr(fig, 'annotationObjects'):
+        for ann in fig.annotationObjects:
+            ann.remove()
+    fig.annotationObjects = []
+    
+    # Create 3-column layout spanning both smith and phase axes
+    # Column positions: left (smith left), center (smith center), right (smith right/phase)
+    col_positions = np.array([0.19, 0.48, 0.76])+0.04  # x positions in figure coordinates
+    
+    for i, (col_key, col_pos) in enumerate(zip(['col1', 'col2', 'col3'], col_positions)):
+        if fig.parameterAnnotations[col_key]:  # Only create annotation if column has content
+            col_text = '\n'.join(fig.parameterAnnotations[col_key])
+            ann = fig.text(col_pos, -0.06, col_text,  # Use figure coordinates
+                          ha='center', va='bottom',
+                          fontsize=11,
+                          transform=fig.transFigure)
+            fig.annotationObjects.append(ann)
 
 
 def displayAllParams(parameters):

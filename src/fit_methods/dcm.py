@@ -102,6 +102,8 @@ class DCM(FitMethod):
         params.add('inverseQi', value =1/Q - np.cos(phi)/Qc)
         inverseQi = params['inverseQi'].value
         params.add('Qi', value = 1/inverseQi)
+        params.add('Qc_real', value = Qc/np.cos(phi))
+        params['Qc_real'].stderr = params['Qc'].stderr/np.cos(phi) if params['Qc'].stderr is not None else None
         #if you get an error that points here check that all your parameters varied during the fit, set verbose = True
         # Check if any of the standard errors are infinity
         if (

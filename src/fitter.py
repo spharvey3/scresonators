@@ -102,6 +102,7 @@ class Fitter:
             return emcee_result.params
 
         params = self.fit_method.extractQi(self = self.fit_method, params = result.params)
+        
         return sdata, params, init_guess
     
     
