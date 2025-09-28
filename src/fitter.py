@@ -61,10 +61,6 @@ class Fitter:
             sdata = self.anchor_to_point(fdata, sdata)
 
 
-
-
-
-
         ##############################################################################
         #Initial guess for fitting parameters
         ##############################################################################
@@ -74,14 +70,19 @@ class Fitter:
         else:
             params = self.fit_method.find_initial_guess(self = self.fit_method ,fdata = fdata,sdata = sdata)
             #very weird that self = self.fit_method needs to be passed
-
+        
+        #move this to function
+        kappa = params['f0'].value / params['Q'].value
+        mask = np.abs(fdata - params['f0'].value) < kappa/2
+        fdata_fit = fdata[mask]
+        sdata_fit = sdata[mask]
 
         #####################################################
         #The actual fit, implemented with the lmfit package
         #####################################################
         model = self.fit_method.create_model(self = self.fit_method)
         #this creates an lmfit.Model() object defined by the FitMethod
-        result = model.fit(sdata, params, f=fdata, method='leastsq') #lmfit.Model.fit(), not Fitter.fit()
+        result = model.fit(sdata_fit, params, f=fdata_fit, method='leastsq')#, fit_kws={'max_nfev': 10000000}) #lmfit.Model.fit(), not Fitter.fit()
         if verbose: print(result.fit_report())
 
         
@@ -101,7 +102,7 @@ class Fitter:
             return emcee_result.params
 
         params = self.fit_method.extractQi(self = self.fit_method, params = result.params)
-        return params
+        return sdata, params
     
     
     def preprocess_circle(self, fdata: np.ndarray, sdata: np.ndarray):
@@ -363,7 +364,7 @@ class Fitter:
         delay_params = lmfit.Parameters()
         delay_params.add('delay', delay_guess, max = delay_guess+0.2*np.abs(delay_guess), min = delay_guess-0.2*np.abs(delay_guess), brute_step = np.abs(delay_guess)/10000)
 
-        min_result = lmfit.minimize(fcn = self.circle_deviation, params = delay_params, args = (fdata, sdata), method = 'leastsq')
+        min_result = lmfit.minimize(fcn = self.circle_deviation, params = delay_params, args = (fdata, sdata), method = 'leastsq', max_nfev = 10000000)
         electrical_delay = min_result.params['delay'].value
 
         return electrical_delay
@@ -446,7 +447,7 @@ class Fitter:
             orparams.add(name = 'delay', value = 0, vary = False)
             orparams.add(name = 'theta_0', value = 0)
 
-            orp_results = orpmodel.fit(np.unwrap(np.angle(sdata)), orparams, f=fdata)
+            orp_results = orpmodel.fit(np.unwrap(np.angle(sdata)), orparams, f=fdata, fit_kws={'max_nfev': 10000000})
             theta_0 = orp_results.params['theta_0'].value
             beta = fmod(theta_0 + np.pi, np.pi)
             xc, yc, r = find_circle(np.real(sdata), np.imag(sdata))

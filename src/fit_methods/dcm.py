@@ -85,10 +85,10 @@ class DCM(FitMethod):
 
         # Create an lmfit.Parameters object to store initial guesses
         params = lmfit.Parameters()
-        params.add('Q', value=Q_guess)
-        params.add('Qc', value=Qc_guess)
+        params.add('Q', value=Q_guess, min=0, max=1e8)
+        params.add('Qc', value=Qc_guess, min=0, max=1e8)
         params.add('f0', value=f_c, min=f_c*0.9, max=f_c*1.1)
-        params.add('phi', value=0, min=-np.pi, max=np.pi)
+        params.add('phi', value=-1.3, min=-np.pi, max=np.pi)
 
         return params
 
@@ -103,7 +103,22 @@ class DCM(FitMethod):
         inverseQi = params['inverseQi'].value
         params.add('Qi', value = 1/inverseQi)
         #if you get an error that points here check that all your parameters varied during the fit, set verbose = True
-        params['inverseQi'].stderr = np.sqrt((params['Q'].stderr/Q**2)**2+(np.sin(phi)*params['phi'].stderr/Qc)**2+(np.cos(phi)*params['Qc'].stderr/Qc**2)**2)
+        # Check if any of the standard errors are infinity
+        if (
+            params['Q'].stderr is None or
+            params['Qc'].stderr is None or
+            params['phi'].stderr is None or
+            np.isinf(params['Q'].stderr) or
+            np.isinf(params['Qc'].stderr) or
+            np.isinf(params['phi'].stderr)
+        ):
+            params['inverseQi'].stderr = np.inf
+        else:
+            params['inverseQi'].stderr = np.sqrt(
+            (params['Q'].stderr/Q**2)**2 +
+            (np.sin(phi)*params['phi'].stderr/Qc)**2 +
+            (np.cos(phi)*params['Qc'].stderr/Qc**2)**2
+            )
         params['Qi'].stderr = params['inverseQi'].stderr/inverseQi**2
         return params
 
