@@ -50,7 +50,7 @@ class Resonator:
         if type(self.fdata) == NoneType or type(self.sdata) == NoneType:
             raise ValueError("Data not loaded")
 
-        self.sdata, self.fit_result = self.fitter.fit(self.fdata, self.sdata, manual_init=manual_init, verbose = verbose)
+        self.sdata, self.fit_result, self.init_guess = self.fitter.fit(self.fdata, self.sdata, manual_init=manual_init, verbose = verbose)
         # self.fit_result = self.fitter.fit(self.fdata, self.sdata, manual_init=manual_init, verbose = verbose)
         return self.fit_result
 

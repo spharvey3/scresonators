@@ -70,10 +70,10 @@ class Fitter:
         else:
             params = self.fit_method.find_initial_guess(self = self.fit_method ,fdata = fdata,sdata = sdata)
             #very weird that self = self.fit_method needs to be passed
-        
+        init_guess=params
         #move this to function
         kappa = params['f0'].value / params['Q'].value
-        mask = np.abs(fdata - params['f0'].value) < kappa/2
+        mask = np.abs(fdata - params['f0'].value) < kappa
         fdata_fit = fdata[mask]
         sdata_fit = sdata[mask]
 
@@ -102,7 +102,7 @@ class Fitter:
             return emcee_result.params
 
         params = self.fit_method.extractQi(self = self.fit_method, params = result.params)
-        return sdata, params
+        return sdata, params, init_guess
     
     
     def preprocess_circle(self, fdata: np.ndarray, sdata: np.ndarray):
