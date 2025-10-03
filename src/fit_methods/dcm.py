@@ -1,9 +1,8 @@
 import numpy as np
 import lmfit
 
-from utils import *
+from ..utils import *
 from .fit_method import FitMethod
-from ..utils import find_circle
 from scipy.ndimage import gaussian_filter
 
 class DCM(FitMethod):

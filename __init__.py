@@ -1,2 +1,2 @@
-from .src import Fitter
-from .src import DCM
+from .fitter import Fitter
+from .fit_methods import DCM
