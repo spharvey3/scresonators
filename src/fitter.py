@@ -23,6 +23,7 @@ class Fitter:
         self.remove_elec_delay = kwargs.get('remove_delay', True)
         self.preprocess_circle = kwargs.get('preprocess_circle', True)
         self.preprocess_linear = kwargs.get('preprocess_linear', False)
+        self.fit_delay = kwargs.get('fit_delay', True)
         #self.fit_Qc = kwargs.get('fit_Qc', True)
         self.normalize = kwargs.get('normalize', 4)
         self.MC_rounds = kwargs.get('MC_rounds', 1000)
@@ -37,7 +38,7 @@ class Fitter:
         self.fr_guess = None
         self.theta_0 = None
         self.phi = None
-        self.off_res_point = kwargs.get('off_res_point', 1+0*1j)
+        self.off_res_point = kwargs.get('off_res_point', None)
 
 
     def fit(self, fdata, sdata, manual_init=None, verbose=False):
@@ -56,8 +57,9 @@ class Fitter:
             #TODO: this step needs fixing
             sdata, _, _, _, _ = self.preprocess_linear(fdata, sdata, self.normalize)
         if self.remove_elec_delay == True:
-            delay = self.find_delay(fdata, sdata)
-            sdata = remove_delay(fdata, sdata, delay)
+            if self.fit_delay: 
+                self.delay = self.find_delay(fdata, sdata)            
+            sdata = remove_delay(fdata, sdata, self.delay)
         if self.preprocess_circle == True:
             #rotate and scale the off-resonant point to a prescribed anchor point
             sdata = self.anchor_to_point(fdata, sdata)
@@ -78,7 +80,7 @@ class Fitter:
             params['Qc'].vary = False
             params['phi'].vary = False
 
-        #move this to function
+        #move this to a new function
         kappa = params['f0'].value / params['Q'].value
         mask = np.abs(fdata - params['f0'].value) < kappa
         fdata_fit = fdata[mask]
@@ -476,8 +478,8 @@ class Fitter:
             sdata: numpy array of the transformed scattering data
         """
         if anchor_point == None:
-            anchor_point = self.off_res_point
-
-        Old_ORP = self.find_off_res_point(fdata, sdata)
-        sdata = anchor_point*sdata/Old_ORP
+            anchor_point = 1+0*1j
+        if self.off_res_point == None:
+            self.off_res_point = self.find_off_res_point(fdata, sdata)
+        sdata = anchor_point*sdata/self.off_res_point
         return sdata

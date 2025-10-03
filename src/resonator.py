@@ -39,9 +39,9 @@ class Resonator:
         self.fdata = network.f
 
     #TODO: you should be able to pass a string or a FitMethod object
-    def set_fitting_strategy(self, strategy: FitMethod):
+    def set_fitting_strategy(self, strategy: FitMethod):#, **kwargs):
         """Set the fitting strategy with a FitMethod object."""
-        self.fitter = Fitter(fit_method=strategy)
+        self.fitter = Fitter(fit_method=strategy)#:, **kwargs)
 
     def fit(self, manual_init=None, verbose = False):
         """Perform fitting using the selected fitting strategy."""
