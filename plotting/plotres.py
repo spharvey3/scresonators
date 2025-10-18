@@ -7,7 +7,7 @@ import numpy as np
 #TODO: need to improve label placement when specified by user
 
 def makeSummaryFigure():
-    fig = plt.figure(layout='constrained', figsize=(8, 5))
+    fig = plt.figure(layout='constrained', figsize=(8, 6.5))
     # Modified layout: smith gets 2/3 width, mag/phase share 1/3 width
     ax = fig.subplot_mosaic([['smith', 'smith', 'mag'], ['smith', 'smith', 'phase']])
     fig.parameterAnnotation = None
@@ -16,6 +16,7 @@ def makeSummaryFigure():
     ax['phase'].set_xlabel('$f-f_0$ (kHz)')
     ax['mag'].tick_params(labelbottom = False)
     ax['mag'].set_aspect('auto')
+    ax['smith'].set_aspect('equal')
     ax['phase'].set_aspect('auto')
     #fig.subplots_adjust(hspace=0)#overridden by using the layout=constrain option in plt.figure()
     return fig, ax
@@ -98,7 +99,8 @@ def annotateParam(param, name):
     val, stderr = round_measured_value(val, stderr)
 
     # Format based on the ratio of stderr to val
-    if abs(stderr/val) >= 1/500:  # stderr is within a factor of 100 of val
+        
+    if val!=0 and abs(stderr/val) >= 1/500:  # stderr is within a factor of 100 of val
         if abs(val) < 1000:  # Don't use scientific notation for numbers < 1000
             param_text = f'{name}: {val:.3f} $\\pm$ {stderr:.3f}'
         else:
@@ -139,7 +141,7 @@ def annotateParam(param, name):
         fig.parameterCount = 0
     
     # Add parameter to appropriate column (cycling through 3 columns)
-    col_num = (fig.parameterCount % 3) + 1
+    col_num = (fig.parameterCount % 2) + 1
     col_key = f'col{col_num}'
     fig.parameterAnnotations[col_key].append(param_text)
     fig.parameterCount += 1
@@ -152,16 +154,29 @@ def annotateParam(param, name):
     
     # Create 3-column layout spanning both smith and phase axes
     # Column positions: left (smith left), center (smith center), right (smith right/phase)
-    col_positions = np.array([0.19, 0.48, 0.76])+0.04  # x positions in figure coordinates
+    # col_positions = np.array([0.19, 0.48, 0.76])+0.04  # x positions in figure coordinates
     
-    for i, (col_key, col_pos) in enumerate(zip(['col1', 'col2', 'col3'], col_positions)):
+    # for i, (col_key, col_pos) in enumerate(zip(['col1', 'col2', 'col3'], col_positions)):
+    #     if fig.parameterAnnotations[col_key]:  # Only create annotation if column has content
+    #         col_text = '\n'.join(fig.parameterAnnotations[col_key])
+    #         ann = fig.text(col_pos, -0.0, col_text,  # Use figure coordinates
+    #                       ha='center', va='bottom',
+    #                       fontsize=11,
+    #                       transform=fig.transFigure)
+    #         fig.annotationObjects.append(ann)
+
+   
+    col_positions = np.array([0.16, 0.5])+0.04  # x positions in figure coordinates
+
+    for i, (col_key, col_pos) in enumerate(zip(['col1', 'col2'], col_positions)):
         if fig.parameterAnnotations[col_key]:  # Only create annotation if column has content
             col_text = '\n'.join(fig.parameterAnnotations[col_key])
-            ann = fig.text(col_pos, -0.06, col_text,  # Use figure coordinates
+            ann = fig.text(col_pos, 0.03, col_text,  # Use figure coordinates
                           ha='center', va='bottom',
                           fontsize=11,
                           transform=fig.transFigure)
             fig.annotationObjects.append(ann)
+            
 
 
 def displayAllParams(parameters):
@@ -184,9 +199,13 @@ def round_measured_value(value, stdev):
     Two significant figures for the error
     value rounded to line up with first digit in the error
     '''
-    place = int(np.floor(np.log10(stdev)))
-    rounded_value = round(value, -place)
-    rounded_err = round(stdev, -(place-1))
+    if stdev is not None and not np.isinf(stdev):
+        place = int(np.floor(np.log10(stdev)))
+        rounded_value = round(value, -place)
+        rounded_err = round(stdev, -(place-1))
+    else:
+        rounded_value = value
+        rounded_err = 0
     return rounded_value, rounded_err
 
 #TODO: display resonant & off-resonant points
