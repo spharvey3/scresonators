@@ -54,14 +54,18 @@ class Fitter:
             #this feature is untested
             sdata = self.background_removal(sdata)
         if self.preprocess_linear == True:
+
             #TODO: this step needs fixing
             sdata, _, _, _, _ = self.preprocess_linear(fdata, sdata, self.normalize)
+        
+        # This removes electrical delay, creating parameters delay and theta_0
         if self.remove_elec_delay == True:
             if self.fit_delay: 
                 self.delay = self.find_delay(fdata, sdata)            
             sdata = remove_delay(fdata, sdata, self.delay)
-        if self.preprocess_circle == True:
-            #rotate and scale the off-resonant point to a prescribed anchor point
+        
+        # Rotate and scale the off-resonant point to a prescribed anchor point
+        if self.preprocess_circle == True:            
             sdata = self.anchor_to_point(fdata, sdata)
 
         ##############################################################################
@@ -82,7 +86,7 @@ class Fitter:
 
         #move this to a new function
         kappa = params['f0'].value / params['Q'].value
-        mask = np.abs(fdata - params['f0'].value) < kappa
+        mask = np.abs(fdata - params['f0'].value) < 2*kappa
         fdata_fit = fdata[mask]
         sdata_fit = sdata[mask]
 
@@ -231,18 +235,32 @@ class Fitter:
             delay: float representing the electrical delay
         """
         params = lmfit.Parameters()
-        guess_params = self.fit_method.find_initial_guess(self = self.fit_method ,fdata = fdata,sdata = sdata)
-
+        if self.Ql_guess is None and self.fr_guess is None:
+            guess_params = self.fit_method.find_initial_guess(self = self.fit_method ,fdata = fdata, sdata = sdata)
+        delay_guess = self.initial_guess_delay(fdata, sdata)
+        print(f'Initial delay guess: {delay_guess}')
         if self.delay_guess == None:
-            delay_guess = self.initial_guess_delay(fdata, sdata)/1.25
+            delay_guess = self.initial_guess_delay(fdata, sdata)
         elif self.delay_guess == 0:
-            delay_guess = 1e-16*self.guess_delay(fdata, sdata)
+            delay_guess = self.guess_delay(fdata, sdata)
         else:
             delay_guess = self.delay_guess
+        #delay_guess=0
+        #print(guess_params)
+        #print(delay_guess)
 
-
-        params.add(name = 'fr', value = guess_params['f0'].value)
-        params.add(name = 'Ql', value = guess_params['Q'].value)
+        delay_guess=45
+        if self.Ql_guess is not None:
+            params.add(name = 'Ql', value = self.Ql_guess, vary=False)
+        else:
+            params.add(name = 'Ql', value = guess_params['Q'].value)
+        if self.fr_guess is not None:
+            params.add(name = 'fr', value = self.fr_guess, vary=False)
+        else:
+            params.add(name = 'fr', value = guess_params['f0'].value)
+        
+        #params.add(name = 'delay', value = delay_guess, min=-1e-4, max=1e-4, vary=False)
+        #params.add(name = 'delay', value = delay_guess,vary=False)
         params.add(name = 'delay', value = delay_guess)
         params.add(name = 'theta_0', value = 0)
 
@@ -258,24 +276,26 @@ class Fitter:
             #TODO: we should have a condition on the residuals to break this loop early
         electrical_delay = params['delay'].value
         self.Ql_guess = params['Ql'].value
+        
         self.fr_guess = params['fr'].value
-        self.theta_0 = params['theta_0'].value
+        self.theta_0 = params['theta_0'].value % np.pi
+        print(f'Ql guess: {self.Ql_guess}, fr guess: {params["fr"].value}, theta_0: {self.theta_0}, delay: {electrical_delay}')
 
         #Plot the sloped arctan as a verification step
-        '''
-        import matplotlib.pyplot as plt
-        sdata_new = remove_delay(fdata, sdata, electrical_delay)
-        xc, yc, r = find_circle(np.real(sdata_new), np.imag(sdata_new))
+        plot_delay_fit = True
+        if plot_delay_fit:
+            import matplotlib.pyplot as plt
+            sdata_new = remove_delay(fdata, sdata, electrical_delay)
+            xc, yc, r = find_circle(np.real(sdata_new), np.imag(sdata_new))
 
-        offset_phase = params['theta_0'].value+2*np.arctan(2*params['Ql'].value*(1-fdata/params['fr'].value))
+            offset_phase = params['theta_0'].value+2*np.arctan(2*params['Ql'].value*(1-fdata/params['fr'].value))
 
-        plt.plot(fdata, np.unwrap(np.angle(sdata_new-(xc+1j*yc))), label = 'data')
-        plt.plot(fdata, offset_phase, label = 'min fit')
-        plt.ylabel('offset phase (rad.)')
-        plt.xlabel('frequency (a.u.)')
-        plt.legend()
-        plt.show()
-        '''
+            plt.plot(fdata, np.unwrap(np.angle(sdata_new-(xc+1j*yc))), label = 'data')
+            plt.plot(fdata, offset_phase, label = 'min fit')
+            plt.ylabel('offset phase (rad.)')
+            plt.xlabel('frequency (a.u.)')
+            plt.legend()
+            plt.show()
 
         return electrical_delay
 
@@ -293,6 +313,7 @@ class Fitter:
         phase = np.unwrap(np.angle(sdata))
         lrg_result = linregress(fdata, phase)
         delay_guess = lrg_result.slope/(-2*np.pi)
+        print(f'linear fit delay guess: {delay_guess:0.4f}')
 
         return delay_guess
 
@@ -337,16 +358,16 @@ class Fitter:
         avg_delay_guess = (delay_fit[0]+delay_fit[1])/2
 
         #plot the fits as a check
-        '''
-        import matplotlib.pyplot as plt
-        plt.plot(fdata, np.unwrap(np.angle(sdata)))
-        plt.plot(trimmed_freq[0], lrg_result[0].intercept+lrg_result[0].slope*trimmed_freq[0], color = 'k', linestyle = 'dashed')
-        plt.plot(trimmed_freq[1], lrg_result[1].intercept + lrg_result[1].slope * trimmed_freq[1], color='k',
-                 linestyle='dashed')
-        plt.show()
-        '''
+        plot_slope = False
+        if plot_slope:
+            import matplotlib.pyplot as plt
+            plt.plot(fdata, np.unwrap(np.angle(sdata)))
+            plt.plot(trimmed_freq[0], lrg_result[0].intercept+lrg_result[0].slope*trimmed_freq[0], color = 'k', linestyle = 'dashed')
+            plt.plot(trimmed_freq[1], lrg_result[1].intercept + lrg_result[1].slope * trimmed_freq[1], color='k',
+                    linestyle='dashed')
+            plt.show()
 
-        print(f'initial delay guess: {avg_delay_guess}')
+        #print(f'initial delay guess: {avg_delay_guess}')
         return avg_delay_guess
 
     def find_delay_circlefit(self, fdata: np.ndarray, sdata: np.ndarray):
@@ -368,7 +389,7 @@ class Fitter:
         phase_data = np.unwrap(np.angle(sdata))
         #the initial guess just needs to get the scale right, this should be good enough
         delay_guess = self.guess_delay(fdata, sdata)
-        print(f'delay initial guess: {delay_guess}')
+        print(f'Delay initial guess: {delay_guess:0.3f}')
 
         # make an lmfit.Parameters object and add a single lmfit.Parameter object representing the electrical delay
         delay_params = lmfit.Parameters()
@@ -443,7 +464,7 @@ class Fitter:
             beta = fmod(self.theta_0+np.pi, np.pi)
             xc, yc, r = find_circle(np.real(sdata), np.imag(sdata))
             self.phi = fmod(np.pi - self.theta_0 + np.angle(xc+1j*yc), np.pi)
-            print(f'phi (preprocessing): {self.phi}')
+            print(f'phi (preprocessing): {self.phi:0.3g}, theta_0: {self.theta_0:0.3g}, xc: {xc:0.3g}, yc: {yc:0.3g}, delay: {self.delay:0.3g}')
             return xc+ 1j*yc+ r*np.exp(1j*beta)
         else:
             #this block is untested
@@ -481,5 +502,5 @@ class Fitter:
             anchor_point = 1+0*1j
         if self.off_res_point == None:
             self.off_res_point = self.find_off_res_point(fdata, sdata)
-        sdata = anchor_point*sdata/self.off_res_point
-        return sdata
+        new_sdata = anchor_point*sdata/self.off_res_point
+        return new_sdata

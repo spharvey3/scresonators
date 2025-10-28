@@ -199,7 +199,7 @@ def round_measured_value(value, stdev):
     Two significant figures for the error
     value rounded to line up with first digit in the error
     '''
-    if stdev is not None and not np.isinf(stdev):
+    if stdev is not None and not np.isinf(stdev) and stdev != 0:
         place = int(np.floor(np.log10(stdev)))
         rounded_value = round(value, -place)
         rounded_err = round(stdev, -(place-1))
