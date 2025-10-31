@@ -237,19 +237,25 @@ class Fitter:
         params = lmfit.Parameters()
         if self.Ql_guess is None and self.fr_guess is None:
             guess_params = self.fit_method.find_initial_guess(self = self.fit_method ,fdata = fdata, sdata = sdata)
-        delay_guess = self.initial_guess_delay(fdata, sdata)
-        print(f'Initial delay guess: {delay_guess}')
+        
+        
         if self.delay_guess == None:
             delay_guess = self.initial_guess_delay(fdata, sdata)
         elif self.delay_guess == 0:
             delay_guess = self.guess_delay(fdata, sdata)
         else:
             delay_guess = self.delay_guess
-        #delay_guess=0
         #print(guess_params)
-        #print(delay_guess)
 
-        delay_guess=45
+        delay_guess1 = self.initial_guess_delay(fdata, sdata)
+        delay_guess2 = self.guess_delay(fdata, sdata)
+        print(delay_guess1, delay_guess2)
+        delay_guess=0
+
+        
+        
+        #delay_guess = self.initial_guess_delay(fdata, sdata)/3
+        print(f'Initial delay guess: {delay_guess}')
         if self.Ql_guess is not None:
             params.add(name = 'Ql', value = self.Ql_guess, vary=False)
         else:
@@ -278,9 +284,9 @@ class Fitter:
         self.Ql_guess = params['Ql'].value
         
         self.fr_guess = params['fr'].value
-        self.theta_0 = params['theta_0'].value % np.pi
+        self.theta_0 = params['theta_0'].value
         print(f'Ql guess: {self.Ql_guess}, fr guess: {params["fr"].value}, theta_0: {self.theta_0}, delay: {electrical_delay}')
-
+        print(min_result.redchi)
         #Plot the sloped arctan as a verification step
         plot_delay_fit = True
         if plot_delay_fit:
@@ -289,8 +295,9 @@ class Fitter:
             xc, yc, r = find_circle(np.real(sdata_new), np.imag(sdata_new))
 
             offset_phase = params['theta_0'].value+2*np.arctan(2*params['Ql'].value*(1-fdata/params['fr'].value))
+            new_phase = np.unwrap(np.angle(sdata_new-(xc+1j*yc)))
 
-            plt.plot(fdata, np.unwrap(np.angle(sdata_new-(xc+1j*yc))), label = 'data')
+            plt.plot(fdata, new_phase, label = 'data')
             plt.plot(fdata, offset_phase, label = 'min fit')
             plt.ylabel('offset phase (rad.)')
             plt.xlabel('frequency (a.u.)')
@@ -461,11 +468,24 @@ class Fitter:
             additionally sets self.phi
         """
         if self.theta_0 is not None:
-            beta = fmod(self.theta_0+np.pi, np.pi)
+            #beta = fmod(self.theta_0+np.pi, np.pi)
+            beta = self.theta_0 + np.pi
             xc, yc, r = find_circle(np.real(sdata), np.imag(sdata))
-            self.phi = fmod(np.pi - self.theta_0 + np.angle(xc+1j*yc), np.pi)
+            #self.phi = fmod(np.pi - self.theta_0 + np.angle(xc+1j*yc), 2*np.pi)
+            self.phi = np.pi - self.theta_0 + np.angle(xc+1j*yc)
             print(f'phi (preprocessing): {self.phi:0.3g}, theta_0: {self.theta_0:0.3g}, xc: {xc:0.3g}, yc: {yc:0.3g}, delay: {self.delay:0.3g}')
-            return xc+ 1j*yc+ r*np.exp(1j*beta)
+            off_res_point = xc+ 1j*yc+ r*np.exp(1j*beta)
+            debug=True
+            if debug: 
+                import matplotlib.pyplot as plt
+                plt.figure()
+                plt.plot(np.real(sdata), np.imag(sdata), label = 'raw data')
+                circle = plt.Circle((xc, yc), r, color='g', fill=False, label='fit circle')
+                #plt.gca().add_patch(circle)
+                plt.axis('equal')
+                plt.plot(np.real(off_res_point), np.imag(off_res_point), 'ro', label = 'off res point')
+
+            return off_res_point
         else:
             #this block is untested
             #TODO: fit the offset phase to an arctan (without delay, that is not the place for this function)
@@ -502,5 +522,6 @@ class Fitter:
             anchor_point = 1+0*1j
         if self.off_res_point == None:
             self.off_res_point = self.find_off_res_point(fdata, sdata)
+        
         new_sdata = anchor_point*sdata/self.off_res_point
         return new_sdata
