@@ -81,7 +81,8 @@ class DCM(FitMethod):
 
         gradSmagnitude = np.abs(gradS)
         f_c = fdata[np.argmax(gradSmagnitude)-1]#uncertainties can't be calculated when this guess is too good!!!
-        Q_guess = 2*f_c/(linewidth)
+        Q_guess = 2*f_c/(linewidth) # This is getting a value 2x larger than it should be 
+        Q_guess = Q_guess/2
         #print(f'Q_guess: {Q_guess}')
         Qc_guess = Q_guess/(2*r)
 

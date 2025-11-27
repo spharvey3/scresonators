@@ -24,9 +24,11 @@ class Fitter:
         self.preprocess_circle = kwargs.get('preprocess_circle', True)
         self.preprocess_linear = kwargs.get('preprocess_linear', False)
         self.fit_delay = kwargs.get('fit_delay', True)
+        self.fit_theta = kwargs.get('fit_theta', False)
+        self.fname = kwargs.get('fname', '')
         #self.fit_Qc = kwargs.get('fit_Qc', True)
         self.normalize = kwargs.get('normalize', 4)
-        self.MC_rounds = kwargs.get('MC_rounds', 1000)
+        self.MC_rounds = kwargs.get('MC_rounds', 5000)
         self.MC_step_const = kwargs.get('MC_step_const', 0.05)
         self.MC_weight = kwargs.get('MC_weight', False)
         self.MC_fix = kwargs.get('MC_fix', [])
@@ -61,7 +63,10 @@ class Fitter:
         # This removes electrical delay, creating parameters delay and theta_0
         if self.remove_elec_delay == True:
             if self.fit_delay: 
-                self.delay = self.find_delay(fdata, sdata)            
+                verbose=True
+                self.delay = self.find_delay(fdata, sdata)
+            else:
+                old_sdata = sdata     
             sdata = remove_delay(fdata, sdata, self.delay)
         
         # Rotate and scale the off-resonant point to a prescribed anchor point
@@ -83,6 +88,8 @@ class Fitter:
             params['phi'].value = self.Qc_set[1]
             params['Qc'].vary = False
             params['phi'].vary = False
+        else:
+            verbose=True
 
         #move this to a new function
         kappa = params['f0'].value / params['Q'].value
@@ -95,10 +102,25 @@ class Fitter:
         #####################################################
         model = self.fit_method.create_model(self = self.fit_method)
         #this creates an lmfit.Model() object defined by the FitMethod
-        result = model.fit(sdata_fit, params, f=fdata_fit, method='leastsq')#, fit_kws={'max_nfev': 10000000}) #lmfit.Model.fit(), not Fitter.fit()
-        if verbose: print(result.fit_report())
-
+        method = 'least_squares'
+        #method = 'leastsq'
+        result = model.fit(sdata_fit, params, f=fdata_fit, method=method)#, fit_kws={'max_nfev': 10000000}) #lmfit.Model.fit(), not Fitter.fit()
         
+        if self.fit_theta:
+            self.fr_guess = result.params['f0'].value
+            self.Ql_guess = result.params['Q'].value
+            self.delay = self.find_delay(fdata, old_sdata)
+            sdata = remove_delay(fdata, old_sdata, self.delay)         
+            sdata = self.anchor_to_point(fdata, sdata)
+
+            init_guess=result.params
+
+            sdata_fit = sdata[mask]
+            result = model.fit(sdata_fit, params, f=fdata_fit, method=method)
+            
+        if verbose: print(result.fit_report())
+        self.res_chi = result.redchi
+        print(f'Resonator fit chi sq: {result.redchi:.3g}')
         # Using Monte Carlo to explore parameter space if enabled
         #may want to delete this
         if self.MC_weight:
@@ -109,7 +131,7 @@ class Fitter:
                 'is_weighted': self.MC_weight,
                 'workers': 1
             }
-            emcee_result = model.fit(data=sdata, params=result.params, x=fdata, method='emcee', fit_kws=emcee_kwargs)
+            emcee_result = model.fit(data=sdata, params=result.params, f=fdata, method='emcee', fit_kws=emcee_kwargs)
             if verbose:
                 print(emcee_result.fit_report())
             return emcee_result.params
@@ -236,7 +258,7 @@ class Fitter:
         """
         params = lmfit.Parameters()
         if self.Ql_guess is None and self.fr_guess is None:
-            guess_params = self.fit_method.find_initial_guess(self = self.fit_method ,fdata = fdata, sdata = sdata)
+            guess_params = self.fit_method.find_initial_guess(self = self.fit_method, fdata = fdata, sdata = sdata)
         
         
         if self.delay_guess == None:
@@ -249,33 +271,41 @@ class Fitter:
 
         delay_guess1 = self.initial_guess_delay(fdata, sdata)
         delay_guess2 = self.guess_delay(fdata, sdata)
-        print(delay_guess1, delay_guess2)
+        #print(delay_guess1, delay_guess2)
         delay_guess=0
-
-        
         
         #delay_guess = self.initial_guess_delay(fdata, sdata)/3
-        print(f'Initial delay guess: {delay_guess}')
+        #print(f'Initial delay guess: {delay_guess}')
         if self.Ql_guess is not None:
-            params.add(name = 'Ql', value = self.Ql_guess, vary=False)
+            params.add(name = 'Ql', value = self.Ql_guess, min=0.9*self.Ql_guess, max=1.1*self.Ql_guess)
+            # if not self.fit_theta: 
+            params['Ql'].vary = False
         else:
-            params.add(name = 'Ql', value = guess_params['Q'].value)
+            params.add(name = 'Ql', value = guess_params['Q'].value, min=0, max=1e8)
         if self.fr_guess is not None:
-            params.add(name = 'fr', value = self.fr_guess, vary=False)
+            params.add(name = 'fr', value = self.fr_guess, min=0.99*self.fr_guess, max=1.01*self.fr_guess)
+            # if not self.fit_theta: 
+            params['fr'].vary = False     
         else:
-            params.add(name = 'fr', value = guess_params['f0'].value)
+            params.add(name = 'fr', value = guess_params['f0'].value, min=0, max=1e10)
         
         #params.add(name = 'delay', value = delay_guess, min=-1e-4, max=1e-4, vary=False)
         #params.add(name = 'delay', value = delay_guess,vary=False)
-        params.add(name = 'delay', value = delay_guess)
-        params.add(name = 'theta_0', value = 0)
-
+        if self.fit_theta:
+            params.add(name = 'delay', value = self.delay, vary=False)
+            params.add(name = 'theta_0', value = self.theta_0, min=self.theta_0-0.05, max=self.theta_0+0.05)
+        else:
+            params.add(name = 'delay', value = delay_guess, min=-np.pi, max=np.pi)
+            params.add(name = 'theta_0', value = 0, min=-np.pi, max=np.pi)
 
         #running the minimizer several times also improves results
-        for iter in range(30):
+        for iter in range(10):
+            #method = 'differential_evolution'
+            method='least_squares'
+            #method = 'leastsq'
             #alternate running the least squares minimization & brute force only varying the delay?
             min_result = lmfit.minimize(fcn=self.arctan_deviation, params=params, args=(fdata, sdata),
-                                    method='leastsq', max_nfev = 10000000)
+                                    method=method, max_nfev = 10000000)
 
             params = min_result.params
 
@@ -285,8 +315,8 @@ class Fitter:
         
         self.fr_guess = params['fr'].value
         self.theta_0 = params['theta_0'].value
-        print(f'Ql guess: {self.Ql_guess}, fr guess: {params["fr"].value}, theta_0: {self.theta_0}, delay: {electrical_delay}')
-        print(min_result.redchi)
+        print(f'Ql guess: {self.Ql_guess:.0f}, fr guess: {params["fr"].value:.4f}, theta_0: {self.theta_0:.4f}, delay: {electrical_delay:.4f}')
+        print(f'Chi sq: {min_result.redchi:.3g}')
         #Plot the sloped arctan as a verification step
         plot_delay_fit = True
         if plot_delay_fit:
@@ -296,13 +326,18 @@ class Fitter:
 
             offset_phase = params['theta_0'].value+2*np.arctan(2*params['Ql'].value*(1-fdata/params['fr'].value))
             new_phase = np.unwrap(np.angle(sdata_new-(xc+1j*yc)))
-
-            plt.plot(fdata, new_phase, label = 'data')
-            plt.plot(fdata, offset_phase, label = 'min fit')
-            plt.ylabel('offset phase (rad.)')
-            plt.xlabel('frequency (a.u.)')
+            plt.figure(layout='tight', figsize=(5.5,3.5))
+            plt.plot(fdata*1e3, new_phase, '.', label = 'Data', color="#0869c8")
+            plt.plot(fdata*1e3, offset_phase, label = 'Fit', color="#b51d14")
+            plt.ylabel('Offset phase (rad.)')
+            plt.xlabel('Frequency (MHz)')
             plt.legend()
-            plt.show()
+            f_ave = np.mean(fdata)
+            plt.savefig(self.fname + '_delay_fit.png')
+            plt.close()
+            #plt.show()
+            
+            
 
         return electrical_delay
 
@@ -320,7 +355,7 @@ class Fitter:
         phase = np.unwrap(np.angle(sdata))
         lrg_result = linregress(fdata, phase)
         delay_guess = lrg_result.slope/(-2*np.pi)
-        print(f'linear fit delay guess: {delay_guess:0.4f}')
+        #print(f'linear fit delay guess: {delay_guess:0.4f}')
 
         return delay_guess
 
@@ -473,17 +508,20 @@ class Fitter:
             xc, yc, r = find_circle(np.real(sdata), np.imag(sdata))
             #self.phi = fmod(np.pi - self.theta_0 + np.angle(xc+1j*yc), 2*np.pi)
             self.phi = np.pi - self.theta_0 + np.angle(xc+1j*yc)
-            print(f'phi (preprocessing): {self.phi:0.3g}, theta_0: {self.theta_0:0.3g}, xc: {xc:0.3g}, yc: {yc:0.3g}, delay: {self.delay:0.3g}')
+            print(f'Phi (preprocessing): {self.phi:0.3g}, theta_0: {self.theta_0:0.3g}, xc: {xc:0.3g}, yc: {yc:0.3g}')#, Delay: {self.delay:0.3g}')
             off_res_point = xc+ 1j*yc+ r*np.exp(1j*beta)
             debug=True
             if debug: 
                 import matplotlib.pyplot as plt
-                plt.figure()
-                plt.plot(np.real(sdata), np.imag(sdata), label = 'raw data')
-                circle = plt.Circle((xc, yc), r, color='g', fill=False, label='fit circle')
-                #plt.gca().add_patch(circle)
+                fig=plt.figure(figsize=(4,4), layout='tight')
+                plt.plot(np.real(sdata), np.imag(sdata), color="#0869c8")
+                circle = plt.Circle((xc, yc), r, color='#cacaca', fill=False, label='fit circle', linewidth=1)
+                plt.gca().add_patch(circle)
                 plt.axis('equal')
-                plt.plot(np.real(off_res_point), np.imag(off_res_point), 'ro', label = 'off res point')
+                plt.plot(np.real(off_res_point), np.imag(off_res_point), 'ro', label = 'Off Res Point')
+                plt.legend()
+                plt.savefig(self.fname + '_circle_fit.png')
+                plt.close(fig)
 
             return off_res_point
         else:

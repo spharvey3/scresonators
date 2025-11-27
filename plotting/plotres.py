@@ -7,7 +7,7 @@ import numpy as np
 #TODO: need to improve label placement when specified by user
 
 def makeSummaryFigure():
-    fig = plt.figure(layout='constrained', figsize=(8, 6.5))
+    fig = plt.figure(layout='tight', figsize=(8, 6.5))
     # Modified layout: smith gets 2/3 width, mag/phase share 1/3 width
     ax = fig.subplot_mosaic([['smith', 'smith', 'mag'], ['smith', 'smith', 'phase']])
     fig.parameterAnnotation = None
