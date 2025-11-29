@@ -40,6 +40,7 @@ class Fitter:
         self.fr_guess = None
         self.theta_0 = None
         self.phi = None
+        self.delay_chi = 0
         self.off_res_point = kwargs.get('off_res_point', None)
 
 
@@ -105,24 +106,29 @@ class Fitter:
         method = 'least_squares'
         #method = 'leastsq'
         result = model.fit(sdata_fit, params, f=fdata_fit, method=method)#, fit_kws={'max_nfev': 10000000}) #lmfit.Model.fit(), not Fitter.fit()
-        
+        og_chi = result.redchi
         if self.fit_theta:
+            #print(self.theta_0)
             self.fr_guess = result.params['f0'].value
             self.Ql_guess = result.params['Q'].value
             self.delay = self.find_delay(fdata, old_sdata)
-            sdata = remove_delay(fdata, old_sdata, self.delay)         
-            sdata = self.anchor_to_point(fdata, sdata)
-
+            #print(self.theta_0)
+            #print(self.off_res_point)
+            self.off_res_point = None
+            sdata2 = remove_delay(fdata, old_sdata, self.delay)         
+            sdata2 = self.anchor_to_point(fdata, sdata2)
+            #print(self.off_res_point)
             init_guess=result.params
 
-            sdata_fit = sdata[mask]
-            result = model.fit(sdata_fit, params, f=fdata_fit, method=method)
+            sdata_fit2 = sdata2[mask]
+            model2 = self.fit_method.create_model(self = self.fit_method)
+            result = model2.fit(sdata_fit2, params, f=fdata_fit, method=method)
             
         if verbose: print(result.fit_report())
         self.res_chi = result.redchi
-        print(f'Resonator fit chi sq: {result.redchi:.3g}')
+        print(f'Resonator fit chi sq: {result.redchi:.3g}, before fitting theta: {og_chi:.3g}')
         # Using Monte Carlo to explore parameter space if enabled
-        #may want to delete this
+        # This seems to consistently give worse results than the basic least squares fit
         if self.MC_weight:
             emcee_kwargs = {
                 'steps': self.MC_rounds,
@@ -317,6 +323,7 @@ class Fitter:
         self.theta_0 = params['theta_0'].value
         print(f'Ql guess: {self.Ql_guess:.0f}, fr guess: {params["fr"].value:.4f}, theta_0: {self.theta_0:.4f}, delay: {electrical_delay:.4f}')
         print(f'Chi sq: {min_result.redchi:.3g}')
+        self.delay_chi = min_result.redchi
         #Plot the sloped arctan as a verification step
         plot_delay_fit = True
         if plot_delay_fit:
