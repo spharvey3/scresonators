@@ -321,8 +321,7 @@ class Fitter:
         
         self.fr_guess = params['fr'].value
         self.theta_0 = params['theta_0'].value
-        print(f'Ql guess: {self.Ql_guess:.0f}, fr guess: {params["fr"].value:.4f}, theta_0: {self.theta_0:.4f}, delay: {electrical_delay:.4f}')
-        print(f'Chi sq: {min_result.redchi:.3g}')
+        print(f'Fit delay. Chi sq: {min_result.redchi:.3g}, Q: {self.Ql_guess:.0f}, fr: {params["fr"].value:.4f}, theta_0: {self.theta_0:.4f}, delay: {electrical_delay:.4f}')
         self.delay_chi = min_result.redchi
         #Plot the sloped arctan as a verification step
         plot_delay_fit = True
@@ -515,7 +514,7 @@ class Fitter:
             xc, yc, r = find_circle(np.real(sdata), np.imag(sdata))
             #self.phi = fmod(np.pi - self.theta_0 + np.angle(xc+1j*yc), 2*np.pi)
             self.phi = np.pi - self.theta_0 + np.angle(xc+1j*yc)
-            print(f'Phi (preprocessing): {self.phi:0.3g}, theta_0: {self.theta_0:0.3g}, xc: {xc:0.3g}, yc: {yc:0.3g}')#, Delay: {self.delay:0.3g}')
+            print(f'Fit circle: Phi (preprocessing): {self.phi:0.3g}, theta_0: {self.theta_0:0.3g}, xc: {xc:0.3g}, yc: {yc:0.3g}')#, Delay: {self.delay:0.3g}')
             off_res_point = xc+ 1j*yc+ r*np.exp(1j*beta)
             debug=True
             if debug: 

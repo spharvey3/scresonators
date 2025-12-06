@@ -9,14 +9,14 @@ import numpy as np
 def makeSummaryFigure():
     fig = plt.figure(layout='tight', figsize=(8, 6.5))
     # Modified layout: smith gets 2/3 width, mag/phase share 1/3 width
-    ax = fig.subplot_mosaic([['smith', 'smith', 'mag'], ['smith', 'smith', 'phase']])
+    ax = fig.subplot_mosaic([['circle', 'circle', 'mag'], ['circle', 'circle', 'phase']])
     fig.parameterAnnotation = None
 
     ax['mag'].sharex(ax['phase'])
     ax['phase'].set_xlabel('$f-f_0$ (kHz)')
     ax['mag'].tick_params(labelbottom = False)
     ax['mag'].set_aspect('auto')
-    ax['smith'].set_aspect('equal')
+    ax['circle'].set_aspect('equal')
     ax['phase'].set_aspect('auto')
     #fig.subplots_adjust(hspace=0)#overridden by using the layout=constrain option in plt.figure()
     return fig, ax
@@ -50,10 +50,9 @@ def phase(fdata, sdata, **kwargs):
     return fig, ax
 
 
-
 def summaryPlot(fdata, sdata, **kwargs):
     '''
-    This function combines plotres.smith(), .magnitude(), and .phase() functionality, passing **kwargs to
+    This function combines plotres.circle() (not added yet), .magnitude(), and .phase() functionality, passing **kwargs to
     the relevant matplotlib function
     '''
     fig = plt.gcf()
@@ -61,18 +60,19 @@ def summaryPlot(fdata, sdata, **kwargs):
     ax = AxesListToDict(ax_list)
     #fdata = 1e6*(fdata - np.mean(fdata)) #center frequency data around 0 for better smith chart plotting
     #rf.plotting.plot_smith(sdata, ax=ax['smith'], x_label=None, y_label=None, title='Smith Chart', **kwargs)
-    ax['smith'].plot(np.real(sdata), np.imag(sdata), **kwargs)
-    ax['smith'].set_xlabel('Re($S_{21}$)')
-    ax['smith'].set_ylabel('Im($S_{21}$)')
+    ax['circle'].plot(np.real(sdata), np.imag(sdata), **kwargs)
+    ax['circle'].set_xlabel('Re($S_{21}$)')
+    ax['circle'].set_ylabel('Im($S_{21}$)')
     ax['mag'].plot(fdata, 20*np.log10(np.abs(sdata)), **kwargs)
     ax['mag'].set_ylabel('Magnitude (dB)')
     ax['phase'].plot(fdata, np.unwrap(np.angle(sdata)), **kwargs)
     ax['phase'].set_ylabel('Phase (rad)')
-    ax['smith'].axhline(0, color='gray', linestyle='-', linewidth=1)
-    ax['smith'].axvline(1, color='gray', linestyle='-', linewidth=1)
+    ax['circle'].axhline(0, color='gray', linestyle='-', linewidth=1)
+    ax['circle'].axvline(1, color='gray', linestyle='-', linewidth=1)
 
-    
+
     return fig, ax
+
 
 def annotate(annotation_text: str):
     fig = plt.gcf()
@@ -80,7 +80,7 @@ def annotate(annotation_text: str):
     ax = AxesListToDict(ax_list)
 
     if fig.parameterAnnotation == None:
-        fig.parameterAnnotation = ax['smith'].annotate(str(annotation_text), (-1, -1.2), annotation_clip=False)
+        fig.parameterAnnotation = ax['circle'].annotate(str(annotation_text), (-1, -1.2), annotation_clip=False)
     else:
         text = fig.parameterAnnotation.get_text()
         text = text + str(annotation_text)
@@ -89,6 +89,7 @@ def annotate(annotation_text: str):
         x_pos, y_pos = fig.parameterAnnotation.get_position()
         fig.parameterAnnotation.set_position((x_pos, y_pos - 0.125))
         # TODO: query the font height & line spacing for the y-position adjustment
+
 
 def annotateParam(param, name):
     fig = plt.gcf()
@@ -178,10 +179,10 @@ def annotateParam(param, name):
             fig.annotationObjects.append(ann)
             
 
-
 def displayAllParams(parameters):
     for key in parameters:
         annotateParam(parameters[key])
+
 
 def AxesListToDict(ax_list):
     '''
@@ -208,4 +209,3 @@ def round_measured_value(value, stdev):
         rounded_err = 0
     return rounded_value, rounded_err
 
-#TODO: display resonant & off-resonant points
