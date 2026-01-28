@@ -64,7 +64,7 @@ class Fitter:
         # This removes electrical delay, creating parameters delay and theta_0
         if self.remove_elec_delay == True:
             if self.fit_delay: 
-                verbose=True
+                #verbose=True
                 self.delay = self.find_delay(fdata, sdata)
             else:
                 old_sdata = sdata     
@@ -90,7 +90,8 @@ class Fitter:
             params['Qc'].vary = False
             params['phi'].vary = False
         else:
-            verbose=True
+            #verbose=True
+            pass
 
         #move this to a new function
         kappa = params['f0'].value / params['Q'].value
