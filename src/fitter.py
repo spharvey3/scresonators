@@ -37,6 +37,7 @@ class Fitter:
         self.delay_guess = kwargs.get('delay_guess', None)
         self.nonlinear = kwargs.get('nonlinear', False)
         self.Qc_set = kwargs.get('Qc_set', None)
+        self.f0_set = kwargs.get('f0_set', None)
         self.Ql_guess = None
         self.fr_guess = None
         self.theta_0 = None
@@ -92,9 +93,9 @@ class Fitter:
             params['phi'].value = self.Qc_set[1]
             params['Qc'].vary = False
             params['phi'].vary = False
-        else:
-            #verbose=True
-            pass
+        if self.f0_set is not None:
+            params['f0'].value = self.f0_set
+            params['f0'].vary = False
 
         #move this to a new function
         kappa = params['f0'].value / params['Q'].value
