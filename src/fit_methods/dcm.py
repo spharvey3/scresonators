@@ -1,5 +1,6 @@
 import numpy as np
 import lmfit
+from functools import partial
 
 from ..utils import *
 from .fit_method import FitMethod
@@ -286,15 +287,15 @@ class DCM(FitMethod):
             params: lmfit.Parameters object with initial guesses including nonlinear params
         """
         # Get linear initial guess first
-        params = self.find_initial_guess(fdata, sdata)
+        params = self.find_initial_guess(self,fdata, sdata)
 
         # Add effective nonlinear parameters
         # Knl_eff = Knl * |ain|² and gamma_nl_eff = gamma_nl * |ain|²
         # These are power-dependent and fitted directly from the data
         # To extract actual Knl and gamma_nl, fit at multiple powers and
         # plot (Knl_eff * n) vs n - the slope gives Knl
-        params.add('Knl_eff', value=1e3, min=0, max=1e12)  # Effective Kerr (Hz)
-        params.add('gamma_nl_eff', value=1e3, min=0, max=1e12)  # Effective two-photon loss (Hz)
+        params.add('Knl_eff', value=1e2, min=0, max=1e5)  # Effective Kerr (Hz)
+        params.add('gamma_nl_eff', value=1e2, min=0, max=1e5)  # Effective two-photon loss (Hz)
 
         return params
 
@@ -309,7 +310,12 @@ class DCM(FitMethod):
             model: lmfit.Model object
         """
         if nonlinear:
-            model = lmfit.Model(self.func_nonlinear, independent_vars=['f'])
+            # Use partial to fix nonlinear=True so the nonlinear formula is actually used
+            # This prevents lmfit from treating 'nonlinear' as a fittable parameter
+            func_with_nonlinear = partial(self.func_nonlinear, nonlinear=True)
+            # lmfit expects __name__ attribute on the function
+            func_with_nonlinear.__name__ = 'func_nonlinear'
+            model = lmfit.Model(func_with_nonlinear, independent_vars=['f'])
         else:
             model = lmfit.Model(self.func, independent_vars=['f'])
         return model
