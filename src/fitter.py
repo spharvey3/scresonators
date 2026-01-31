@@ -35,6 +35,7 @@ class Fitter:
         self.databg = kwargs.get('databg', None)
         self.plot_results = kwargs.get('plotstyle', None)#for later implementation of optional plotting post fitting
         self.delay_guess = kwargs.get('delay_guess', None)
+        self.nonlinear = kwargs.get('nonlinear', False)
         self.Qc_set = kwargs.get('Qc_set', None)
         self.Ql_guess = None
         self.fr_guess = None
@@ -80,6 +81,8 @@ class Fitter:
         # Setup the initial parameters or use provided manual_init
         if manual_init:
             params = self.manual_init
+        elif self.nonlinear and hasattr(self.fit_method, 'find_initial_guess_nonlinear'):
+            params = self.fit_method.find_initial_guess_nonlinear(self = self.fit_method, fdata = fdata, sdata = sdata)
         else:
             params = self.fit_method.find_initial_guess(self = self.fit_method ,fdata = fdata,sdata = sdata)
             #very weird that self = self.fit_method needs to be passed
@@ -102,7 +105,10 @@ class Fitter:
         #####################################################
         #The actual fit, implemented with the lmfit package
         #####################################################
-        model = self.fit_method.create_model(self = self.fit_method)
+        if self.nonlinear and hasattr(self.fit_method, 'create_model_nonlinear'):
+            model = self.fit_method.create_model_nonlinear(self = self.fit_method, nonlinear=True)
+        else:
+            model = self.fit_method.create_model(self = self.fit_method)
         #this creates an lmfit.Model() object defined by the FitMethod
         method = 'least_squares'
         #method = 'leastsq'
