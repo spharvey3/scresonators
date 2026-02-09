@@ -220,27 +220,29 @@ class DCM(FitMethod):
             return 1 - (Q * np.exp(-1j * phi) / Qc) / (1 + 2j * Q * (f - f0) / f0)
 
         # Calculate total loss rate from Q factor
-        # κi + κc = ωr/Q (total loss rate)
-        omega_r = 2 * np.pi * f0
-        kappa_total = omega_r / Q  # κi + κc
+        # Note: f0 is in GHz, so convert to Hz for consistent units with Knl_eff/gamma_nl_eff
+        f0_hz = f0 * 1e9
+        omega_r = 2 * np.pi * f0_hz
+        kappa_total = omega_r / Q  # κi + κc in Hz
 
         # Normalized parameters (using effective values that already include ain_sq)
+        # Knl_eff and gamma_nl_eff are in Hz, kappa_total is in Hz
         xi = Knl_eff / kappa_total  # normalized Kerr
         eta = gamma_nl_eff / kappa_total  # normalized two-photon loss
 
         S21 = np.zeros(len(f), dtype=complex)
 
         for i, freq in enumerate(f):
-            # Normalized detuning
-            delta = 2 * np.pi * (freq - f0)
+            # Normalized detuning (freq is in GHz, convert to Hz)
+            delta = 2 * np.pi * (freq - f0) * 1e9
             delta_norm = delta / kappa_total
 
             # Solve for photon number
             n = DCM.solve_photon_number(delta_norm, xi, eta)
 
             # Nonlinear frequency shift and loss
-            xi_n = Knl_eff * n / kappa_total  # ξn term
-            eta_n = gamma_nl_eff * n / kappa_total  # ηn term
+            xi_n = xi * n  # ξn term
+            eta_n = eta * n  # ηn term
 
             # Nonlinear S21 (Eq. 8, simplified with A=1, td=0, α=0)
             denominator = 1 + eta_n + 2j * (delta_norm - xi_n)
@@ -294,8 +296,8 @@ class DCM(FitMethod):
         # These are power-dependent and fitted directly from the data
         # To extract actual Knl and gamma_nl, fit at multiple powers and
         # plot (Knl_eff * n) vs n - the slope gives Knl
-        params.add('Knl_eff', value=1e2, min=0, max=1e5)  # Effective Kerr (Hz)
-        params.add('gamma_nl_eff', value=1e2, min=0, max=1e5)  # Effective two-photon loss (Hz)
+        params.add('Knl_eff', value=3e2, min=-1e7, max=1e7)  # Effective Kerr (Hz)
+        params.add('gamma_nl_eff', value=3e2, min=0, max=1e8)  # Effective two-photon loss (Hz)
 
         return params
 
