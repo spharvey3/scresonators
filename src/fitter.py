@@ -1,3 +1,4 @@
+from tabnanny import verbose
 import numpy as np
 import logging
 import lmfit
@@ -131,10 +132,10 @@ class Fitter:
             sdata_fit2 = sdata2[mask]
             model2 = self.fit_method.create_model(self = self.fit_method)
             result = model2.fit(sdata_fit2, params, f=fdata_fit, method=method)
-            
-        if verbose: print(result.fit_report())
         self.res_chi = result.redchi
-        print(f'Resonator fit chi sq: {result.redchi:.3g}, before fitting theta: {og_chi:.3g}')
+        if verbose: 
+            print(result.fit_report())
+            print(f'Resonator fit chi sq: {result.redchi:.3g}, before fitting theta: {og_chi:.3g}')
         # Using Monte Carlo to explore parameter space if enabled
         # This seems to consistently give worse results than the basic least squares fit
         if self.MC_weight:
@@ -270,6 +271,7 @@ class Fitter:
         Returns:
             delay: float representing the electrical delay
         """
+        verbose=False
         params = lmfit.Parameters()
         if self.Ql_guess is None and self.fr_guess is None:
             guess_params = self.fit_method.find_initial_guess(self = self.fit_method, fdata = fdata, sdata = sdata)
@@ -329,7 +331,8 @@ class Fitter:
         
         self.fr_guess = params['fr'].value
         self.theta_0 = params['theta_0'].value
-        print(f'Fit delay. Chi sq: {min_result.redchi:.3g}, Q: {self.Ql_guess:.0f}, fr: {params["fr"].value:.4f}, theta_0: {self.theta_0:.4f}, delay: {electrical_delay:.4f}')
+        if verbose: 
+            print(f'Fit delay. Chi sq: {min_result.redchi:.3g}, Q: {self.Ql_guess:.0f}, fr: {params["fr"].value:.4f}, theta_0: {self.theta_0:.4f}, delay: {electrical_delay:.4f}')
         self.delay_chi = min_result.redchi
         #Plot the sloped arctan as a verification step
         plot_delay_fit = True
@@ -516,13 +519,15 @@ class Fitter:
             the off-resonant point as a complex float
             additionally sets self.phi
         """
+        verbose=False
         if self.theta_0 is not None:
             #beta = fmod(self.theta_0+np.pi, np.pi)
             beta = self.theta_0 + np.pi
             xc, yc, r = find_circle(np.real(sdata), np.imag(sdata))
             #self.phi = fmod(np.pi - self.theta_0 + np.angle(xc+1j*yc), 2*np.pi)
             self.phi = np.pi - self.theta_0 + np.angle(xc+1j*yc)
-            print(f'Fit circle: Phi (preprocessing): {self.phi:0.3g}, theta_0: {self.theta_0:0.3g}, xc: {xc:0.3g}, yc: {yc:0.3g}')#, Delay: {self.delay:0.3g}')
+            if verbose:
+                print(f'Fit circle: Phi (preprocessing): {self.phi:0.3g}, theta_0: {self.theta_0:0.3g}, xc: {xc:0.3g}, yc: {yc:0.3g}')#, Delay: {self.delay:0.3g}')
             off_res_point = xc+ 1j*yc+ r*np.exp(1j*beta)
             debug=True
             if debug: 
