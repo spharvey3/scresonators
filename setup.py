@@ -21,8 +21,11 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     keywords="scresonators, superconducting resonators, resonator fit",
-    package_dir={"scresonators": "src"},
-    packages=["scresonators", "scresonators.fit_methods"],
+    package_dir={
+        "scresonators": "src",
+        "scresonators.plotting": "plotting",
+    },
+    packages=["scresonators", "scresonators.fit_methods", "scresonators.plotting"],
     python_requires = ">=3.9",
     install_requires=[
         "attrs>=21.0",  # Updated from "attr>=0.3.*"
