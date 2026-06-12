@@ -343,6 +343,10 @@ class Fitter:
 
             offset_phase = params['theta_0'].value+2*np.arctan(2*params['Ql'].value*(1-fdata/params['fr'].value))
             new_phase = np.unwrap(np.angle(sdata_new-(xc+1j*yc)))
+            # Match the branch-snap done in arctan_deviation so the plotted
+            # data and model line up instead of differing by a multiple of 2π.
+            k = np.round(np.mean(new_phase - offset_phase) / (2*np.pi))
+            new_phase = new_phase - 2*np.pi*k
             plt.figure(layout='tight', figsize=(5.5,3.5))
             plt.plot(fdata*1e3, new_phase, '.', label = 'Data', color="#0869c8")
             plt.plot(fdata*1e3, offset_phase, label = 'Fit', color="#b51d14")
@@ -486,7 +490,13 @@ class Fitter:
 
         offset_phase = np.unwrap(np.angle(sdata))
 
-        residuals = np.abs(offset_phase - (theta_0+2*np.arctan(2*Ql*(1-fdata/fr))))
+        # np.unwrap anchors to the first sample's principal branch, which can
+        # land 2π away from the model at low power. Snap to the model's branch.
+        model = theta_0 + 2*np.arctan(2*Ql*(1-fdata/fr))
+        k = np.round(np.mean(offset_phase - model) / (2*np.pi))
+        offset_phase = offset_phase - 2*np.pi*k
+
+        residuals = np.abs(offset_phase - model)
         return residuals
 
     def circle_deviation(self, params: lmfit.Parameters, fdata: np.ndarray, sdata: np.ndarray):
