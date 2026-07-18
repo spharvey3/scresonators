@@ -10,14 +10,15 @@ import lmfit
 from matplotlib.patches import Circle
 
 
+dcm = DCM()
 myres = Resonator()
 myres.load_data(fdata = freqs, sdata = S21)
-myres.set_fitting_strategy(strategy = DCM)
+myres.set_fitting_strategy(strategy = dcm)
 #myres.fitter.delay_guess=75
 results = myres.fit(verbose = True)
 print(f'Qtot: {Qtot}')
 
-delay = myres.fitter.find_delay(freqs, S21)
+delay = myres.fitter.preprocessor.find_delay(freqs, S21)
 z_data = remove_delay(freqs, S21, delay)
 print(f'delay: {delay}')
 
@@ -27,7 +28,7 @@ xc, yc, R = find_circle(np.real(z_data), np.imag(z_data))
 #Begin results plot
 fig, ax = plotres.makeSummaryFigure()
 plotres.summaryPlot(freqs, S21, color = 'blue', label = 'data')
-plotres.summaryPlot(freqs, DCM.fit_function(freqs, results), color = 'k', linestyle = 'dashed', label='fit')
+plotres.summaryPlot(freqs, dcm.fit_function(freqs, results), color = 'k', linestyle = 'dashed', label='fit')
 plotres.summaryPlot(freqs, z_data, color = 'green', label = 'delay removed')
 #ax['smith'].add_patch(Circle((xc, yc),R, fill = True, color = 'red'))
 #plotres.annotateParam(results['Qi'])

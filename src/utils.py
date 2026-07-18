@@ -1,6 +1,4 @@
 import numpy as np
-import lmfit
-from scipy.linalg import eig
 
 def find_nearest(array: np.ndarray, value: float) -> tuple:
     """
@@ -63,60 +61,6 @@ def find_circle(x: np.ndarray, y: np.ndarray) -> tuple:
     radius = np.sqrt(uc**2 + vc**2 + (Suu + Svv) / len(x))
 
     return center_x, center_y, radius
-
-def find_circle2(x: np.array, y: np.array):
-    '''
-    implements the algebraic circle fitting technique detailed in Chernov & Lesort, and Probst, originally developed by Pratt
-    '''
-    #There is a bug in here somewhere -- the radius is not right
-    z = x**2+y**2
-    Mzz = np.sum(z**2)
-    Mxz = np.sum(x*z)
-    Myz = np.sum(y*z)
-    Mxy = np.sum(x*y)
-    Mxx = np.sum(x*x)
-    Myy = np.sum(y*y)
-    Mx = np.sum(x)
-    My = np.sum(y)
-    Mz = np.sum(z)
-    n = len(x)
-
-    #define the moments matrix
-    M = np.array([[Mzz, Mxz, Myz, Mz],[Mxz, Mxx, Mxy, Mx],[Myz, Mxy, Myy, My],[Mz, Mx, My, n]])
-    #This encodes the constraint B^2+C^2-4AD=1
-    B = np.array([[0,0,0,-2],[0,1,0,0],[0,0,1,0],[-2,0,0,0]])
-
-    w, vr = eig(M, b=B)
-    #the eigenvalue w[i] corresponds to the eigenvector vr[:,i]
-
-    #Find index of smallest positive eigenvalue
-    ind = -1
-    eta = float('inf')
-    for i in range(len(w)):
-        if w[i] > 0 and w[i] < eta:
-            ind = i
-            eta = w[i]
-
-    if ind == -1:
-        ValueError('Cannot find eigenvector in the circle fit')
-    else:
-        A = vr[0,ind]
-        B = vr[1, ind]
-        C = vr[2, ind]
-        D = vr[3, ind]
-
-    #normalize
-    a = B**2+C**2-4*A*D
-    A = A/a
-    B = B/a
-    C = C/a
-    D = D/a
-
-    xc = -B/(2*A)
-    yc = -C/(2*A)
-    R = 1/(2*np.abs(A))
-    return xc, yc, R
-
 
 def phase_centered(f, fr, Ql, theta, delay=0.):
     """
