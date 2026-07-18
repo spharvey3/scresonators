@@ -129,9 +129,5 @@ venv.bak/
 *RGREF*
 *csv
 
-# Resource files
-!fit_resonator/Resources/sample_temperature_data/*
-!fit_resonator/Resources/sample_temperature_output/*
-
 # mypy
 .mypy_cache/

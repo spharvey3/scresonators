@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scresonators"
+dynamic = ["version"]
+description = "Python library for measuring and fitting superconducting resonator data"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "CU Boulder Cryogenic Quantum Testbed" }]
+keywords = ["scresonators", "superconducting resonators", "resonator fit"]
+requires-python = ">=3.9"
+dependencies = [
+    "numpy>=1.20",
+    "scipy>=1.6",
+    "lmfit>=1.0.2",
+    "matplotlib>=3.4",
+    "scikit-rf>=0.17",
+    "emcee>=3.0",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
+
+[project.urls]
+Homepage = "https://github.com/Boulder-Cryogenic-Quantum-Testbed/scresonators"
+"Bug Reports" = "https://github.com/Boulder-Cryogenic-Quantum-Testbed/scresonators/issues"
+Testbed = "https://www.nist.gov/programs-projects/boulder-cryogenic-quantum-testbed"
+
+[tool.setuptools]
+packages = ["scresonators", "scresonators.fit_methods", "scresonators.plotting"]
+
+[tool.setuptools.package-dir]
+scresonators = "src"
+"scresonators.plotting" = "plotting"
+
+[tool.setuptools.dynamic]
+version = { file = "VERSION" }

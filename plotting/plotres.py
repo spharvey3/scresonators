@@ -187,8 +187,8 @@ def AxesListToDict(ax_list):
     utility function to convert a list of matplotlib axes to a dictionary of them indexed by their label
     '''
     ax_dict = dict()
-    for n in range(len(ax_list)):
-        ax_dict.update({ax_list[n]._label: ax_list[n]})
+    for ax in ax_list:
+        ax_dict[ax.get_label()] = ax
     return ax_dict
 
 #TODO: more careful verification of this function -- Google's AI gave it to me quicker than stackexchange

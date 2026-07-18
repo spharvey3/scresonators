@@ -106,33 +106,11 @@ def periodic_boundary(angle):
     """
     return (angle + np.pi) % (2 * np.pi) - np.pi
 
-#this needs to be changed to transform the circle to an arbitrary off-resonant point
-def normalize(f_data: np.ndarray, z_data: np.ndarray, delay: float, a: float, alpha: float) -> np.ndarray:
-    """
-    Normalizes scattering data to a canonical position with the off-resonant
-    point at (1, 0), adjusting for amplitude and phase offset, but not for
-    rotation around the off-resonant point.
-
-    Args:
-        f_data (np.ndarray): The frequency data array, not used in the current implementation
-                             but included for future extensions or adjustments.
-        z_data (np.ndarray): The complex scattering data to be normalized.
-        delay (float): The cable delay; currently not used in normalization but
-                       included for consistency with calibration parameters.
-        a (float): The normalization amplitude factor.
-        alpha (float): The phase offset to be corrected.
-
-    Returns:
-        np.ndarray: The normalized scattering data.
-    """
-    z_norm = (z_data / a) * np.exp(-1j * alpha)
-    return z_norm
-
 def remove_delay(fdata: np.ndarray, sdata: np.ndarray, delay):
     return np.exp(2j*np.pi*delay*fdata)*sdata
 
-def sloped_arctan(f, Ql, fr, delay, theta_0):
-    offsetphase = theta_0 + -2*np.pi*f*delay + 2* np.arctan(2*Ql*(1-f/fr))
+def sloped_arctan(f, Ql, fr, delay, theta_0, orientation=1):
+    offsetphase = theta_0 + -2*np.pi*f*delay + orientation * 2*np.arctan(2*Ql*(1-f/fr))
     return offsetphase
 
 def partitionFrequencyBand(fdata: np.ndarray, GradS: np.ndarray, keep = 'above', cutoff = 0.5):

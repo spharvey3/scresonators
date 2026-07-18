@@ -3,7 +3,6 @@ import lmfit
 from scipy.ndimage import gaussian_filter
 from scipy.stats import linregress
 from scipy.interpolate import interp1d
-from math import fmod
 
 from .utils import remove_delay, find_circle, sloped_arctan, partitionFrequencyBand
 
@@ -205,7 +204,8 @@ class Preprocessor:
             params.add(name = 'delay', value = self.delay, vary=False)
             params.add(name = 'theta_0', value = self.theta_0, min=self.theta_0-0.05, max=self.theta_0+0.05)
         else:
-            params.add(name = 'delay', value = delay_guess, min=-np.pi, max=np.pi)
+            # delay is a time (ns for GHz data), not an angle -- leave it unbounded
+            params.add(name = 'delay', value = delay_guess)
             params.add(name = 'theta_0', value = 0, min=-np.pi, max=np.pi)
 
         #running the minimizer several times also improves results
@@ -235,7 +235,7 @@ class Preprocessor:
         sdata_new = remove_delay(fdata, sdata, electrical_delay)
         xc, yc, r = find_circle(np.real(sdata_new), np.imag(sdata_new))
 
-        offset_phase = params['theta_0'].value+2*np.arctan(2*params['Ql'].value*(1-fdata/params['fr'].value))
+        offset_phase = params['theta_0'].value + self.fit_method.phase_orientation*2*np.arctan(2*params['Ql'].value*(1-fdata/params['fr'].value))
         new_phase = np.unwrap(np.angle(sdata_new-(xc+1j*yc)))
         plt.figure(layout='tight', figsize=(5.5,3.5))
         plt.plot(fdata*1e3, new_phase, '.', label = 'Data', color="#0869c8")
@@ -245,23 +245,6 @@ class Preprocessor:
         plt.legend()
         plt.savefig(self.fname + '_delay_fit.png')
         plt.close()
-
-    def guess_delay(self, fdata: np.ndarray, sdata: np.ndarray):
-        """
-        Linear fit of the phase to be used as an initial guess of the electrical delay.
-
-        Args:
-            fdata: numpy array of the frequency data
-            sdata: numpy array of the scattering data
-
-        Returns:
-            delay: float representing the electrical delay
-        """
-        phase = np.unwrap(np.angle(sdata))
-        lrg_result = linregress(fdata, phase)
-        delay_guess = lrg_result.slope/(-2*np.pi)
-
-        return delay_guess
 
     def initial_guess_delay(self, fdata: np.ndarray, sdata: np.ndarray):
         '''
@@ -329,7 +312,8 @@ class Preprocessor:
 
         offset_phase = np.unwrap(np.angle(sdata))
 
-        residuals = np.abs(offset_phase - (theta_0+2*np.arctan(2*Ql*(1-fdata/fr))))
+        orientation = self.fit_method.phase_orientation
+        residuals = np.abs(offset_phase - (theta_0 + orientation*2*np.arctan(2*Ql*(1-fdata/fr))))
         return residuals
 
     def find_off_res_point(self, fdata, sdata, verbose=False):
@@ -366,12 +350,14 @@ class Preprocessor:
             orparams.add(name = 'fr', value = guess_params['f0'].value)
             orparams.add(name = 'delay', value = 0, vary = False)
             orparams.add(name = 'theta_0', value = 0)
+            orparams.add(name = 'orientation', value = self.fit_method.phase_orientation, vary = False)
 
             orp_results = orpmodel.fit(np.unwrap(np.angle(sdata)), orparams, f=fdata, fit_kws={'max_nfev': 10000000})
             theta_0 = orp_results.params['theta_0'].value
-            beta = fmod(theta_0 + np.pi, np.pi)
+            # same geometry as the theta_0 branch above
+            beta = theta_0 + np.pi
             xc, yc, r = find_circle(np.real(sdata), np.imag(sdata))
-            self.phi = fmod(np.pi - theta_0 + np.angle(xc + 1j * yc), np.pi)
+            self.phi = np.pi - theta_0 + np.angle(xc + 1j * yc)
             if verbose:
                 print(f'phi (preprocessing): {self.phi}')
             return xc + 1j * yc + r * np.exp(1j * beta)

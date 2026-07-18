@@ -22,14 +22,30 @@ class FitMethod(ABC):
     supports_nonlinear = False
     #: index offset applied to argmax|dS/df| when picking the f0 guess;
     #: a slightly imperfect guess keeps lmfit's uncertainty estimation happy
+    #: (with a too-good guess the covariance matrix can go singular and
+    #: stderr comes back as None); subclasses tune the offset empirically
     fc_index_offset = 0
+    #: scale between f_c/linewidth and the Q guess (2 for reflection, whose
+    #: response dip spans twice the estimated linewidth)
+    Q_guess_factor = 1
+    #: circle diameter in units of Q/Qc: 2*r = diameter_factor * Q/Qc
+    diameter_factor = 1
+    #: sign of the centered-phase winding: +1 when func's denominator is
+    #: 1 + 2j*Q*(f-f0)/f0 (DCM), -1 when it is 1 - 2j*... (LCE, reflection);
+    #: the preprocessing delay fit needs it to model the offset phase
+    phase_orientation = 1
+    #: bounds applied to the Q and Qc initial parameters
+    Q_bounds = (0, 1e8)
 
     @staticmethod
     @abstractmethod
     def func(f, *params) -> np.ndarray:
         """The model S21 as a function of frequency and the fit parameters."""
 
-    @abstractmethod
+    def phi_guess(self, phase_guess):
+        """Initial guess for phi (ignored by methods whose func has no phi)."""
+        return phase_guess
+
     def initial_params(self, f_c, linewidth, r, phase_guess) -> lmfit.Parameters:
         """
         Builds the initial lmfit.Parameters from the shared resonance estimate.
@@ -43,6 +59,16 @@ class FitMethod(ABC):
         Returns:
             params: lmfit.Parameters with initial guesses for this method
         """
+        Q_guess = self.Q_guess_factor * f_c / linewidth
+        Qc_guess = self.diameter_factor * Q_guess / (2 * r)
+
+        params = lmfit.Parameters()
+        params.add('Q', value=Q_guess, min=self.Q_bounds[0], max=self.Q_bounds[1])
+        params.add('Qc', value=Qc_guess, min=self.Q_bounds[0], max=self.Q_bounds[1])
+        params.add('f0', value=f_c, min=f_c*0.9, max=f_c*1.1)
+        if 'phi' in inspect.signature(self.func).parameters:
+            params.add('phi', value=self.phi_guess(phase_guess), min=-np.pi, max=np.pi)
+        return params
 
     def create_model(self) -> lmfit.Model:
         """Creates an lmfit Model using the method's func."""

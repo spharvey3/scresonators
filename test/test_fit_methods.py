@@ -25,8 +25,8 @@ def test_find_initial_guess_keys_and_scale(method):
     params = method.find_initial_guess(freqs, sdata)
 
     assert set(names) <= set(params.keys())
-    # the guess is a heuristic; just require the right order of magnitude
-    assert params['Q'].value == approx(Q, rel=2.0)
+    # the guess is a heuristic; observed errors are <=45%, allow up to 100%
+    assert params['Q'].value == approx(Q, rel=1.0)
     assert params['f0'].value == approx(F0, rel=0.01)
 
 

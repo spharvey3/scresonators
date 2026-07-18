@@ -5,6 +5,14 @@ from .preprocessing import Preprocessor
 
 
 class Fitter:
+    #: recognized keyword options (includes legacy aliases preprocess_linear/preprocess_circle)
+    _KNOWN_OPTIONS = {
+        'remove_delay', 'fit_delay', 'delay_guess', 'fit_theta', 'databg',
+        'linear_baseline', 'preprocess_linear', 'normalize', 'anchor_circle',
+        'preprocess_circle', 'off_res_point', 'nonlinear', 'Qc_set', 'f0_set',
+        'MC_weight', 'MC_rounds', 'plot_diagnostics', 'fname',
+    }
+
     def __init__(self, fit_method=None, **kwargs):
         """Initializes the Fitter with a fitting method that includes the fitting function.
 
@@ -33,6 +41,9 @@ class Fitter:
             raise TypeError(f"pass an instance, e.g. {fit_method.__name__}(), not the class {fit_method.__name__}")
         if not isinstance(fit_method, FitMethod):
             raise TypeError("fit_method must be a FitMethod instance, e.g. DCM()")
+        unknown = set(kwargs) - self._KNOWN_OPTIONS
+        if unknown:
+            raise TypeError(f"unknown Fitter option(s): {sorted(unknown)}")
 
         self.fit_method = fit_method
         self.fit_theta = kwargs.get('fit_theta', False)
@@ -90,6 +101,10 @@ class Fitter:
         Returns:
             tuple: (preprocessed sdata, fit parameters with Qi extracted, initial guess)
         """
+        if self.nonlinear and np.max(fdata) > 1e3:
+            raise ValueError("the nonlinear model assumes frequencies in GHz; "
+                             f"fdata max {np.max(fdata):.3g} looks like a different unit")
+
         sdata = self.preprocessor.run(fdata, sdata, verbose=verbose)
 
         # Setup the initial parameters or use provided manual_init
@@ -105,6 +120,10 @@ class Fitter:
         # Fit only the data within two linewidths of the resonance
         kappa = params['f0'].value / params['Q'].value
         mask = np.abs(fdata - params['f0'].value) < 2*kappa
+        if not np.isfinite(kappa) or np.count_nonzero(mask) < len(params):
+            # the linewidth estimate failed (e.g. no points above the gradient
+            # cutoff gives Q_guess=inf, kappa=0); fall back to the full span
+            mask = np.ones(len(fdata), dtype=bool)
         fdata_fit = fdata[mask]
 
         if self.nonlinear:
@@ -119,8 +138,7 @@ class Fitter:
             # letting theta_0 refine, then fit again
             sdata = self.preprocessor.refine_with_theta(
                 fdata, Ql=result.params['Q'].value, fr=result.params['f0'].value, verbose=verbose)
-            init_guess = result.params
-            result = self.fit_method.create_model().fit(sdata[mask], params, f=fdata_fit, method='least_squares')
+            result = model.fit(sdata[mask], result.params, f=fdata_fit, method='least_squares')
 
         self.res_chi = result.redchi
         if verbose:
@@ -134,10 +152,11 @@ class Fitter:
                 'steps': self.MC_rounds,
                 'thin': 10,
                 'burn': int(self.MC_rounds * 0.3),
-                'is_weighted': self.MC_weight,
+                'is_weighted': False,  # the residuals carry no measurement uncertainties
                 'workers': 1
             }
-            result = model.fit(data=sdata, params=result.params, f=fdata, method='emcee', fit_kws=emcee_kwargs)
+            # use the same masked data as the least-squares fit
+            result = model.fit(data=sdata[mask], params=result.params, f=fdata_fit, method='emcee', fit_kws=emcee_kwargs)
             if verbose:
                 print(result.fit_report())
 

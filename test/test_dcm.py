@@ -35,9 +35,9 @@ def test_dcm_roundtrip_with_delay():
 
     result = fit_dcm(freqs, s21)
 
-    assert result['Q'].value == approx(QTOT, rel=0.10)
+    assert result['Q'].value == approx(QTOT, rel=0.05)
     assert result['f0'].value == approx(F0, rel=1e-4)
-    assert result['Qi'].value == approx(QI, rel=0.25)
+    assert result['Qi'].value == approx(QI, rel=0.10)
 
 
 def test_dcm_roundtrip_phi_no_delay():
@@ -46,9 +46,9 @@ def test_dcm_roundtrip_phi_no_delay():
 
     result = fit_dcm(freqs, s21)
 
-    assert result['Q'].value == approx(QTOT, rel=0.10)
+    assert result['Q'].value == approx(QTOT, rel=0.05)
     assert result['f0'].value == approx(F0, rel=1e-4)
-    assert result['Qi'].value == approx(QI, rel=0.25)
+    assert result['Qi'].value == approx(QI, rel=0.10)
 
 
 def test_f0_set_fixes_resonant_frequency():

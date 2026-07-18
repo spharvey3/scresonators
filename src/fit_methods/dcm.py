@@ -9,25 +9,12 @@ class DCM(FitMethod):
     """Diameter Correction Method, with an optional nonlinear (Kerr / two-photon loss) model."""
 
     supports_nonlinear = True
-    # uncertainties can't be calculated when the f0 guess is too good!!!
     fc_index_offset = -1
 
     @staticmethod
     def func(f, Q, Qc, f0, phi):
         """DCM fit function."""
         return 1-(Q*np.exp(-1j*phi)/Qc)/(1+2j*Q*(f-f0)/f0)
-
-    def initial_params(self, f_c, linewidth, r, phase_guess) -> lmfit.Parameters:
-        Q_guess = f_c/linewidth
-        Qc_guess = Q_guess/(2*r)  # the circle diameter is 2*r = Q/Qc
-
-        params = lmfit.Parameters()
-        params.add('Q', value=Q_guess, min=0, max=1e8)
-        params.add('Qc', value=Qc_guess, min=0, max=1e8)
-        params.add('f0', value=f_c, min=f_c*0.9, max=f_c*1.1)
-        params.add('phi', value=phase_guess, min=-np.pi, max=np.pi)
-
-        return params
 
     def extractQi(self, params):
         """
@@ -135,11 +122,15 @@ class DCM(FitMethod):
 
         For simplicity, we set A=1, td=0, and α=0 (asymmetry factor).
 
+        Unlike the linear model (which only depends on frequency ratios), this
+        model mixes f0 with Knl_eff/gamma_nl_eff in Hz, so f and f0 MUST be in
+        GHz. Fitter raises if the frequency data does not look like GHz.
+
         Args:
-            f: frequency array
+            f: frequency array (GHz)
             Q: total quality factor
             Qc: coupling quality factor
-            f0: resonant frequency
+            f0: resonant frequency (GHz)
             phi: impedance mismatch angle
             Knl_eff: effective Kerr parameter = Knl * |ain|² (Hz)
             gamma_nl_eff: effective two-photon loss = gamma_nl * |ain|² (Hz)
@@ -149,8 +140,7 @@ class DCM(FitMethod):
             S21: complex scattering parameter
         """
         if not nonlinear or (Knl_eff == 0 and gamma_nl_eff == 0):
-            # Return linear DCM function
-            return 1 - (Q * np.exp(-1j * phi) / Qc) / (1 + 2j * Q * (f - f0) / f0)
+            return DCM.func(f, Q, Qc, f0, phi)
 
         # Calculate total loss rate from Q factor
         # Note: f0 is in GHz, so convert to Hz for consistent units with Knl_eff/gamma_nl_eff
@@ -206,7 +196,7 @@ class DCM(FitMethod):
             gamma_nl_eff = params['gamma_nl_eff'].value
             return DCM.func_nonlinear(f, Q, Qc, f0, phi, Knl_eff, gamma_nl_eff, nonlinear=True)
         else:
-            return 1 - (Q * np.exp(-1j * phi) / Qc) / (1 + 2j * Q * (f - f0) / f0)
+            return DCM.func(f, Q, Qc, f0, phi)
 
     def find_initial_guess_nonlinear(self, fdata: np.ndarray, sdata: np.ndarray) -> lmfit.Parameters:
         """

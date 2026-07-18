@@ -1,5 +1,4 @@
-# This workflow will install Python dependencies, run tests and lint with a variety of Python versions
-# It will also test install scresonators-fit with pip
+# This workflow installs the package, runs tests, and lints with a variety of Python versions
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
 
 name: tests
@@ -17,20 +16,25 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.10"]
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v3
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install flake8
-        pip install pytest
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install flake8 pytest
+        pip install -r requirements.txt
+    - name: Install package
+      run: |
+        pip install .
+    - name: Import smoke test
+      run: |
+        python -c "from scresonators import Resonator, DCM, LCE, ReflectionMode; from scresonators.plotting import plotres"
     - name: Test with pytest
       run: |
         pytest
