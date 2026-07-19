@@ -27,6 +27,7 @@ class DCM(FitMethod):
         inverseQi = params['inverseQi'].value
         params.add('Qi', value = 1/inverseQi)
         params.add('Qc_real', value = Qc/np.cos(phi))
+        params['Qc_real'].vary = params['Qc'].vary or params['phi'].vary
         params['Qc_real'].stderr = params['Qc'].stderr/np.cos(phi) if params['Qc'].stderr is not None else None
         #if you get an error that points here check that all your parameters varied during the fit, set verbose = True
         # Check if any of the standard errors are infinity
@@ -47,6 +48,52 @@ class DCM(FitMethod):
             )
         params['Qi'].stderr = params['inverseQi'].stderr/inverseQi**2
         return params
+
+    @staticmethod
+    def qi_fano_band(params, b):
+        """Fano-interference Qi uncertainty band for a hanger/notch DCM fit.
+
+        Bounds the systematic error on Qi from coherent leakage of the signal
+        with a background path (Rieger et al., arXiv:2209.03036). The measured
+        signal is S21^Sigma = (1-b)*S21 + b*exp(i*phi_fano): the background path
+        Moebius-transforms the resonance circle, tilting its centre off the real
+        axis. The standard diameter-corrected Qi (1/Qi = 1/Q - cos(phi)/Qc) is
+        exactly the paper's Qi,mid - the real-axis projection of the measured
+        circle centre. With the leakage amplitude ``b`` measured but its phase
+        unknown, the true centre lies anywhere on a circle of radius |R'|*b_tilde
+        about the measured centre, where |R'| = Q/(2*Qc) (hanger factor of two)
+        and b_tilde = b/(1-b). Because 1/Qi is linear in the centre's real part,
+        the worst-case real displacement +/-|R'|*b_tilde maps to a symmetric band
+        on the loss, Delta(1/Qi) = +/- b_tilde/Qc (the factor of two cancels).
+
+        This is the b_tilde_min -> 0 limit of the paper's Eq. 12 (valid because we
+        *measure* b rather than only bounding it from above). It is a HANGER/notch
+        result; reflection geometry would give +/- 2*b_tilde/Qc.
+
+        Args:
+            params: an lmfit.Parameters from a DCM fit (uses 'Q', 'Qc', 'phi').
+            b: measured background-leakage amplitude in [0, 1). ``None`` or <= 0
+               collapses the band to the diameter-corrected Qi (perfect no-op).
+
+        Returns:
+            (Qi_min, Qi_mid, Qi_max). Qi_mid equals the standard DCM Qi. Qi_max is
+            ``np.inf`` when the leakage ambiguity is large enough that the upper
+            edge of the loss band reaches zero (the upper Qi bound is unbounded) -
+            the regime, highlighted by the paper, where strong coupling plus a few
+            percent leakage makes Qi un-upper-boundable.
+        """
+        Q = params['Q'].value
+        Qc = params['Qc'].value
+        phi = params['phi'].value
+        inv_mid = 1.0/Q - np.cos(phi)/Qc
+        if b is None or b <= 0:
+            qi = 1.0/inv_mid
+            return qi, qi, qi
+        bt = b/(1.0 - b)                      # b-tilde
+        inv_min = inv_mid + bt/Qc             # more loss  -> smaller (finite) Qi
+        inv_max = inv_mid - bt/Qc             # less loss  -> larger Qi
+        qi_max = 1.0/inv_max if inv_max > 0 else np.inf
+        return 1.0/inv_min, 1.0/inv_mid, qi_max
 
     #TODO: add function that converts standard errors to 95% confidence intervals
 

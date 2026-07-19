@@ -76,38 +76,69 @@ def annotate(annotation_text: str, fig=None):
         # TODO: query the font height & line spacing for the y-position adjustment
 
 
-def format_param_text(name, value, stderr, units=''):
+def format_param_text(name, value, stderr, units='', vary=True):
     '''
     Formats a measured value and its error as "name: value ± stderr" (LaTeX),
     rounding to the error's significant figures and using scientific notation
-    for large values.
+    for large values. Fixed parameters (`vary=False`) are shown without an error.
     '''
     val, stderr = round_measured_value(value, stderr)
 
+    # Pick decimal precision so the stderr's leading digits are visible
+    # (2 sig figs of stderr). Falls back to 3 if stderr is unavailable.
+    if stderr is not None and stderr != 0:
+        err_place = int(np.floor(np.log10(abs(stderr))))
+        decimals = max(3, -(err_place - 1))
+    else:
+        decimals = 3
+
+    if not vary:
+        if abs(val) < 1000:
+            param_text = f'{name}: {val:.{decimals}f}'
+        else:
+            exponent = int(np.floor(np.log10(abs(val))))
+            val_scaled = val / (10**exponent)
+            param_text = f'{name}: {val_scaled:.3f} $\\times$ 10$^{{{exponent}}}$'
     # Format based on the ratio of stderr to val
-    if val != 0 and abs(stderr/val) >= 1/500:  # stderr is within a factor of 500 of val
+    elif val != 0 and abs(stderr/val) >= 1/500:  # stderr is within a factor of 500 of val
         if abs(val) < 1000:  # Don't use scientific notation for numbers < 1000
-            param_text = f'{name}: {val:.3f} $\\pm$ {stderr:.3f}'
+            param_text = f'{name}: {val:.{decimals}f} $\\pm$ {stderr:.{decimals}f}'
         else:
             # Format as (val ± stderr) × 10^n
             exponent = int(np.floor(np.log10(abs(val))))
             val_scaled = val / (10**exponent)
             stderr_scaled = stderr / (10**exponent)
             param_text = f'{name}: ({val_scaled:.3f} $\\pm$ {stderr_scaled:.3f}) $\\times$ 10$^{{{exponent}}}$'
+    elif units == 'GHz' and stderr != 0:
+        # Mixed units: val stays in GHz, stderr drops to MHz/kHz/Hz/mHz
+        abs_err = abs(stderr)
+        if abs_err >= 1e-3:
+            err_unit, err_scale = 'MHz', 1e3
+        elif abs_err >= 1e-6:
+            err_unit, err_scale = 'kHz', 1e6
+        elif abs_err >= 1e-9:
+            err_unit, err_scale = 'Hz', 1e9
+        else:
+            err_unit, err_scale = 'mHz', 1e12
+        err_scaled = stderr * err_scale
+        err_place_scaled = int(np.floor(np.log10(abs(err_scaled))))
+        err_dec = max(0, -(err_place_scaled - 1))
+        param_text = f'{name}: {val:.3f} GHz $\\pm$ {err_scaled:.{err_dec}f} {err_unit}'
+        units = ''  # the branch already emits its own units
     else:  # stderr is much smaller than val
         if abs(val) < 1000 and abs(stderr) < 1000:  # Don't use scientific notation for numbers < 1000
-            param_text = f'{name}: {val:.3f} $\\pm$ {stderr:.3f}'
+            param_text = f'{name}: {val:.{decimals}f} $\\pm$ {stderr:.{decimals}f}'
         else:
             # Format as val × 10^n1 ± stderr × 10^n2, but check each component
             if abs(val) < 1000:
-                val_part = f'{val:.3f}'
+                val_part = f'{val:.{decimals}f}'
             else:
                 val_exp = int(np.floor(np.log10(abs(val))))
                 val_scaled = val / (10**val_exp)
                 val_part = f'{val_scaled:.3f} $\\times$ 10$^{{{val_exp}}}$'
 
             if abs(stderr) < 1000:
-                stderr_part = f'{stderr:.3f}'
+                stderr_part = f'{stderr:.{decimals}f}'
             else:
                 stderr_exp = int(np.floor(np.log10(abs(stderr))))
                 stderr_scaled = stderr / (10**stderr_exp)
@@ -141,7 +172,8 @@ def annotateParam(param, name=None, fig=None):
         name = param.name
 
     param_text = format_param_text(name, param.value, param.stderr,
-                                   units=_PARAM_UNITS.get(param.name, ''))
+                                   units=_PARAM_UNITS.get(param.name, ''),
+                                   vary=param.vary)
 
     # Add parameter to appropriate column (alternating between the columns)
     columns = annotations['columns']
