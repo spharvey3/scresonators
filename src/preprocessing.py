@@ -7,6 +7,20 @@ from scipy.interpolate import interp1d
 from .utils import remove_delay, find_circle, sloped_arctan, partitionFrequencyBand
 
 
+def _within(value, lo, hi, fallback):
+    """Return value clipped into [lo, hi], or fallback if value is not finite.
+
+    lmfit clips a finite start into its bounds by itself, but a NaN start
+    passes through and scipy's least_squares then raises 'Initial guess is
+    outside of provided bounds' (NaN fails every comparison, even against
+    infinite bounds). A bad linewidth estimate can give such a NaN, or an
+    infinite Q that would land exactly on the bound.
+    """
+    if not np.isfinite(value):
+        value = fallback
+    return float(np.clip(value, lo, hi))
+
+
 class Preprocessor:
     """
     Prepares raw scattering data for fitting: background removal, electrical
@@ -15,6 +29,13 @@ class Preprocessor:
     Holds the preprocessing state (delay, theta_0, phi, off-resonant point)
     so it can be inspected after a fit or reused for a theta refinement pass.
     """
+
+    #: fewest points a side of the resonance must keep outside the linewidth
+    #: for initial_guess_delay to trust its phase slope; below this it uses the
+    #: outer quarter of the band on that side instead
+    min_delay_points = 3
+    #: bounds on Ql in the delay fit
+    Ql_bounds = (0, 1e8)
 
     def __init__(self, fit_method, remove_delay=True, fit_delay=True, delay_guess=None,
                  databg=None, linear_baseline=False, normalize=4, anchor_circle=True,
@@ -180,25 +201,39 @@ class Preprocessor:
         Returns:
             delay: float representing the electrical delay
         """
-        params = lmfit.Parameters()
-        if self.Ql_guess is None and self.fr_guess is None:
-            guess_params = self.fit_method.find_initial_guess(fdata, sdata)
-
         if self.delay_guess is None:
             delay_guess = self.initial_guess_delay(fdata, sdata)
         else:
             delay_guess = self.delay_guess
+        if not np.isfinite(delay_guess):
+            delay_guess = 0.0
 
+        if self.Ql_guess is None or self.fr_guess is None:
+            # Estimate Q and f0 with the delay guess removed: the delay adds a
+            # constant 2*pi*delay*|S| to |dS/df|, which for a shallow dip swamps
+            # the resonance and inflates the linewidth estimate.
+            guess_params = self.fit_method.find_initial_guess(fdata, remove_delay(fdata, sdata, delay_guess))
+
+        f_lo, f_hi = np.min(fdata), np.max(fdata)
+        params = lmfit.Parameters()
         if self.Ql_guess is not None:
             params.add(name = 'Ql', value = self.Ql_guess, min=0.9*self.Ql_guess, max=1.1*self.Ql_guess)
             params['Ql'].vary = False
         else:
-            params.add(name = 'Ql', value = guess_params['Q'].value, min=0, max=1e8)
+            # A linewidth estimate of zero (or a dip lost in the noise) gives an
+            # infinite or NaN Q; fall back to a Q whose linewidth is a tenth of
+            # the span.
+            Ql_fallback = 10 * 0.5 * (f_lo + f_hi) / (f_hi - f_lo)
+            params.add(name = 'Ql', value = _within(guess_params['Q'].value, *self.Ql_bounds, Ql_fallback),
+                       min=self.Ql_bounds[0], max=self.Ql_bounds[1])
         if self.fr_guess is not None:
             params.add(name = 'fr', value = self.fr_guess, min=0.99*self.fr_guess, max=1.01*self.fr_guess)
             params['fr'].vary = False
         else:
-            params.add(name = 'fr', value = guess_params['f0'].value, min=0, max=1e10)
+            # the resonance lies inside the measured band; bounding fr there
+            # (rather than at a fixed 1e10) also keeps data taken in Hz in bounds
+            params.add(name = 'fr', value = _within(guess_params['f0'].value, f_lo, f_hi, 0.5*(f_lo + f_hi)),
+                       min=f_lo, max=f_hi)
 
         if self.fit_theta and self.theta_0 is not None:
             params.add(name = 'delay', value = self.delay, vary=False)
@@ -206,7 +241,15 @@ class Preprocessor:
         else:
             # delay is a time (ns for GHz data), not an angle -- leave it unbounded
             params.add(name = 'delay', value = delay_guess)
-            params.add(name = 'theta_0', value = 0, min=-np.pi, max=np.pi)
+            # theta_0 is left unbounded. remove_delay rotates the whole circle by
+            # 2*pi*delay*f, so near fr a delay change d_tau moves theta_0 by
+            # 2*pi*fr*d_tau (31 rad/ns at 5 GHz): the two are nearly degenerate,
+            # and any finite bound on theta_0 caps how far the delay can move.
+            # A shallow dip, whose delay guess is the least accurate, then pins
+            # theta_0 at the bound and biases delay and Q. arctan_deviation
+            # already snaps the data to the model's 2*pi branch, so an unbounded
+            # theta_0 costs nothing; it is wrapped to (-pi, pi] afterwards.
+            params.add(name = 'theta_0', value = 0)
 
         #running the minimizer several times also improves results
         for _ in range(10):
@@ -219,7 +262,8 @@ class Preprocessor:
         electrical_delay = params['delay'].value
         self.Ql_guess = params['Ql'].value
         self.fr_guess = params['fr'].value
-        self.theta_0 = params['theta_0'].value
+        # report theta_0 on the principal branch (-pi, pi]
+        self.theta_0 = float(np.pi - np.mod(np.pi - params['theta_0'].value, 2*np.pi))
         if verbose:
             print(f'Fit delay. Chi sq: {min_result.redchi:.3g}, Q: {self.Ql_guess:.0f}, fr: {params["fr"].value:.4f}, theta_0: {self.theta_0:.4f}, delay: {electrical_delay:.4f}')
         self.delay_chi = min_result.redchi
@@ -273,6 +317,7 @@ class Preprocessor:
 
         # fit the phase slope on either side of the resonance, excluding the
         # linewidth, and average the two delays
+        n_points = len(fdata)
         delay_fit = []
         for n in range(2):
             #trim the data
@@ -280,11 +325,31 @@ class Preprocessor:
             trimmed_freq = np.delete(freq_arrays[n], trim)
             trimmed_data = np.delete(data_arrays[n], trim)
 
+            # The cutoff is set relative to the smallest |dS/df|. With a cable
+            # delay, |dS/df| off resonance sits on a floor of 2*pi*delay*|S|, and
+            # for a shallow dip (Ql/Qc << 1) the resonance barely rises above it,
+            # so almost every point is classed as inside the linewidth and a side
+            # can keep 0-2 points; linregress then returns NaN. Fall back to the
+            # outer quarter of the band on that side, where the resonance adds a
+            # phase of only ~(Ql/Qc)/(detuning in linewidths).
+            if len(trimmed_freq) < self.min_delay_points:
+                outer = np.arange(n_points // 4) if n == 0 else np.arange(n_points - n_points // 4, n_points)
+                trimmed_freq = fdata[outer]
+                trimmed_data = sdata[outer]
+            if len(trimmed_freq) < 2:
+                continue
+
             #fit trimmed freq and data
             trimmed_phase = np.unwrap(np.angle(trimmed_data))
             lrg_result = linregress(trimmed_freq, trimmed_phase)
             delay_fit.append(lrg_result.slope / (-2 * np.pi))
-        avg_delay_guess = (delay_fit[0]+delay_fit[1])/2
+        delay_fit = [d for d in delay_fit if np.isfinite(d)]
+        if not delay_fit:
+            # last resort: the phase slope of the whole band
+            delay_fit = [linregress(fdata, np.unwrap(np.angle(sdata))).slope / (-2 * np.pi)]
+        avg_delay_guess = np.mean(delay_fit)
+        if not np.isfinite(avg_delay_guess):
+            avg_delay_guess = 0.0
 
         return avg_delay_guess
 

@@ -75,3 +75,68 @@ def test_remove_background():
     corrected = Preprocessor(DCM(), databg=databg).remove_background(freqs, dirty)
 
     assert np.allclose(corrected, clean, atol=1e-10)
+
+
+# A very shallow dip: undercoupled (Qc = 1e7 >> Qi = 1e5, a 0.09 dB dip), 80
+# points over +-8 linewidths, 70 ns of cable delay. Off resonance |dS/df| sits
+# on the 2*pi*delay floor and the resonance barely rises above it, which used
+# to leave initial_guess_delay ~1 point per side and a NaN delay guess.
+SHALLOW_F0 = 5.0
+SHALLOW_QC = 1e7
+SHALLOW_QI = 1e5
+SHALLOW_PHI = 0.1
+SHALLOW_QTOT = 1 / (1/SHALLOW_QI + np.cos(SHALLOW_PHI)/SHALLOW_QC)
+SHALLOW_DELAY = 70
+
+
+def make_shallow_s21(noise=0.0, seed=0):
+    linewidth = SHALLOW_F0/SHALLOW_QTOT
+    freqs = np.linspace(SHALLOW_F0 - 8*linewidth, SHALLOW_F0 + 8*linewidth, 80)
+    s21 = make_dcm_s21(freqs, f0=SHALLOW_F0, Q=SHALLOW_QTOT, Qc=SHALLOW_QC,
+                       phi=SHALLOW_PHI, delay=SHALLOW_DELAY)
+    rng = np.random.default_rng(seed)
+    s21 = s21 + noise*(rng.normal(size=len(freqs)) + 1j*rng.normal(size=len(freqs)))/np.sqrt(2)
+    return freqs, s21
+
+
+def test_initial_guess_delay_shallow_dip_is_finite():
+    freqs, s21 = make_shallow_s21(noise=1e-3)
+
+    delay_guess = Preprocessor(DCM()).initial_guess_delay(freqs, s21)
+
+    assert np.isfinite(delay_guess)
+    assert delay_guess == approx(SHALLOW_DELAY, rel=0.02)
+
+
+def test_find_delay_shallow_dip_theta_0_not_pinned():
+    # theta_0 and delay are nearly degenerate (a delay change d_tau rotates the
+    # circle by 2*pi*f0*d_tau); a bound on theta_0 used to stop the delay fit
+    # short of the true delay and bias Q by ~10% even without noise
+    freqs, s21 = make_shallow_s21()
+
+    preprocessor = Preprocessor(DCM())
+    delay = preprocessor.find_delay(freqs, s21)
+
+    assert delay == approx(SHALLOW_DELAY, abs=0.01)
+    assert preprocessor.Ql_guess == approx(SHALLOW_QTOT, rel=0.01)
+    assert -np.pi < preprocessor.theta_0 <= np.pi
+    # for a hanger the offset phase at resonance is pi - phi
+    assert np.angle(np.exp(1j*(preprocessor.theta_0 - (np.pi - SHALLOW_PHI)))) == approx(0, abs=0.01)
+
+
+def test_find_delay_survives_nan_linewidth_estimate():
+    # a dip lost in the noise can give a NaN Q estimate; that must fall back to
+    # a finite start instead of raising 'Initial guess is outside of provided bounds'
+    freqs, s21 = make_shallow_s21(noise=1e-3)
+    method = DCM()
+    true_guess = method.find_initial_guess
+
+    def nan_guess(fdata, sdata):
+        params = true_guess(fdata, sdata)
+        params['Q'].set(value=np.nan)
+        return params
+
+    method.find_initial_guess = nan_guess
+    delay = Preprocessor(method).find_delay(freqs, s21)
+
+    assert np.isfinite(delay)

@@ -86,3 +86,44 @@ def test_nonlinear_requires_support():
     Fitter(fit_method=DCM(), nonlinear=True)  # supported: constructs fine
     with pytest.raises(ValueError, match="LCE"):
         Fitter(fit_method=LCE(), nonlinear=True)
+
+
+def make_sparse_s21(Qc, Qi, f0=5.0, phi=0.1, delay=70, noise=1e-3, npoints=80, span_linewidths=8, seed=0):
+    """DCM hanger trace with cable delay and complex Gaussian noise."""
+    Q = 1 / (1/Qi + np.cos(phi)/Qc)
+    linewidth = f0/Q
+    freqs = np.linspace(f0 - span_linewidths*linewidth, f0 + span_linewidths*linewidth, npoints)
+    s21 = make_dcm_s21(freqs, f0=f0, Q=Q, Qc=Qc, phi=phi, delay=delay)
+    rng = np.random.default_rng(seed)
+    s21 = s21 + noise*(rng.normal(size=npoints) + 1j*rng.normal(size=npoints))/np.sqrt(2)
+    return freqs, s21, Q
+
+
+def test_dcm_shallow_dip_fits():
+    # Qc = 1e7, Qi = 1e5: a 0.09 dB dip, ten times the noise. This used to
+    # raise 'Initial guess is outside of provided bounds' from the delay fit.
+    freqs, s21, Q = make_sparse_s21(Qc=1e7, Qi=1e5)
+
+    result = fit_dcm(freqs, s21)
+
+    assert result['Q'].value == approx(Q, rel=0.10)
+    assert result['f0'].value == approx(5.0, rel=1e-5)
+
+
+def test_dcm_moderately_shallow_dip_fits():
+    # Qc = 1e6, Qi = 1e5: a 0.8 dB dip, which failed the same way
+    freqs, s21, Q = make_sparse_s21(Qc=1e6, Qi=1e5)
+
+    result = fit_dcm(freqs, s21)
+
+    assert result['Q'].value == approx(Q, rel=0.02)
+
+
+def test_dcm_deep_dip_sparse_with_delay():
+    # a deep dip on the same sparse grid still recovers Q closely
+    freqs, s21, Q = make_sparse_s21(Qc=3e5, Qi=4e5)
+
+    result = fit_dcm(freqs, s21)
+
+    assert result['Q'].value == approx(Q, rel=0.02)
+    assert result['f0'].value == approx(5.0, rel=1e-6)
