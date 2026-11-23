@@ -149,3 +149,66 @@ def test_dcm_remove_delay_false():
 
     assert result['Q'].value == approx(QTOT, rel=0.01)
     assert result['phi'].value == approx(0.1, abs=0.01)
+
+
+def make_featureless_s21(seed):
+    rng = np.random.default_rng(seed)
+    freqs = np.linspace(5.0, 5.001, 401)
+    s21 = np.exp(-2j*np.pi*freqs*50) * (1 + 1e-3*(rng.normal(size=401) + 1j*rng.normal(size=401)))
+    return freqs, s21
+
+
+def test_unphysical_fit_is_flagged():
+    # no resonance at all: this trace fits to Qc ~ 3e3 and Qi < 0 with a small
+    # reported stderr; the fitter must not return that as a measurement
+    from src import UnphysicalFitWarning
+    freqs, s21 = make_featureless_s21(seed=25)
+    res = Resonator()
+    res.load_data(fdata=freqs, sdata=s21)
+    res.set_fitting_strategy(DCM())
+
+    with pytest.warns(UnphysicalFitWarning, match='Qi'):
+        result = res.fit()
+
+    assert result['Qi'].value < 0
+    assert any('Qi' in reason for reason in res.fitter.unphysical)
+    for name in ('Q', 'Qc', 'Qi', 'phi'):
+        assert np.isinf(result[name].stderr)
+
+
+def test_unphysical_fit_raises_when_asked():
+    from src import UnphysicalFitError
+    freqs, s21 = make_featureless_s21(seed=25)
+
+    with pytest.raises(UnphysicalFitError, match='Qi'):
+        fit_dcm(freqs, s21, raise_unphysical=True)
+
+
+def test_physical_fit_not_flagged():
+    import warnings
+    from src import UnphysicalFitWarning
+    freqs, s21, Q = make_sparse_s21(Qc=1e7, Qi=1e5)
+    res = Resonator()
+    res.load_data(fdata=freqs, sdata=s21)
+    res.set_fitting_strategy(DCM(), raise_unphysical=True)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter('error', UnphysicalFitWarning)
+        result = res.fit()
+
+    assert res.fitter.unphysical == []
+    assert np.isfinite(result['Qi'].stderr)
+
+
+def test_unphysical_reasons():
+    import lmfit
+    params = lmfit.Parameters()
+    for name, value in dict(Q=1e5, Qc=2e5, Qi=2e5, phi=0.3).items():
+        params.add(name, value=value)
+    assert DCM().unphysical_reasons(params) == []
+
+    params['Qi'].value = -5e4
+    params['phi'].value = 2.0
+    reasons = DCM().unphysical_reasons(params)
+    assert len(reasons) == 2
+    assert any('Qi' in r for r in reasons) and any('phi' in r for r in reasons)

@@ -1,7 +1,21 @@
+import warnings
+
 import numpy as np
 
 from .fit_methods.fit_method import FitMethod
 from .preprocessing import Preprocessor
+
+
+class UnphysicalFitWarning(UserWarning):
+    """A fit returned parameters no passive resonator can have (see FitMethod.unphysical_reasons)."""
+
+
+class UnphysicalFitError(ValueError):
+    """Raised instead of UnphysicalFitWarning when the Fitter has raise_unphysical=True."""
+
+
+#: parameters whose standard errors are set to inf when a fit is unphysical
+_QUALITY_PARAMS = ('Q', 'Qc', 'Qi', 'inverseQi', 'Qc_real', 'phi')
 
 
 class Fitter:
@@ -10,7 +24,7 @@ class Fitter:
         'remove_delay', 'fit_delay', 'delay_guess', 'fit_theta', 'databg',
         'linear_baseline', 'preprocess_linear', 'normalize', 'anchor_circle',
         'preprocess_circle', 'off_res_point', 'nonlinear', 'Qc_set', 'f0_set',
-        'MC_weight', 'MC_rounds', 'plot_diagnostics', 'fname',
+        'MC_weight', 'MC_rounds', 'plot_diagnostics', 'fname', 'raise_unphysical',
     }
 
     def __init__(self, fit_method=None, **kwargs):
@@ -36,6 +50,9 @@ class Fitter:
             MC_rounds (int): number of emcee steps (default 5000)
             plot_diagnostics (bool): save diagnostic plots of the delay and circle fits (default False)
             fname (str): filename prefix for diagnostic plots (default '')
+            raise_unphysical (bool): raise UnphysicalFitError when the fitted Q, Qc
+                or Qi is not positive or |phi| >= pi/2, instead of warning and
+                setting their standard errors to inf (default False)
         """
         if isinstance(fit_method, type):
             raise TypeError(f"pass an instance, e.g. {fit_method.__name__}(), not the class {fit_method.__name__}")
@@ -55,6 +72,9 @@ class Fitter:
         self.Qc_set = kwargs.get('Qc_set', None)
         self.f0_set = kwargs.get('f0_set', None)
         self.res_chi = None
+        self.raise_unphysical = kwargs.get('raise_unphysical', False)
+        #: reasons the last fit is unphysical; empty when it is physical
+        self.unphysical = []
 
         self.preprocessor = Preprocessor(
             fit_method,
@@ -87,6 +107,11 @@ class Fitter:
     @property
     def delay_chi(self):
         return self.preprocessor.delay_chi
+
+    @property
+    def delay_converged(self):
+        """Whether the delay fit converged within its evaluation cap (None if it did not run)."""
+        return self.preprocessor.delay_converged
 
     def fit(self, fdata, sdata, manual_init=None, verbose=False):
         """
@@ -161,8 +186,27 @@ class Fitter:
                 print(result.fit_report())
 
         params = self.fit_method.extractQi(result.params)
+        self._flag_unphysical(params)
 
         return sdata, params, init_guess
+
+    def _flag_unphysical(self, params):
+        """
+        Records why the fit is unphysical in self.unphysical. If it is, either
+        raises UnphysicalFitError (raise_unphysical=True) or warns and sets the
+        quality-factor and phi standard errors to inf, so a caller reading only
+        the values and errors cannot take the fit as a measurement.
+        """
+        self.unphysical = self.fit_method.unphysical_reasons(params)
+        if not self.unphysical:
+            return
+        message = 'unphysical fit: ' + '; '.join(self.unphysical)
+        if self.raise_unphysical:
+            raise UnphysicalFitError(message)
+        for name in _QUALITY_PARAMS:
+            if name in params:
+                params[name].stderr = np.inf
+        warnings.warn(message, UnphysicalFitWarning, stacklevel=3)
 
     def _apply_constraints(self, params):
         """Fixes parameters the caller prescribed via Qc_set / f0_set."""

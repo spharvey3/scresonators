@@ -147,6 +147,27 @@ class FitMethod(ABC):
         params['Qi'].stderr = params['inverseQi'].stderr/inverseQi**2
         return params
 
+    def unphysical_reasons(self, params: lmfit.Parameters) -> list:
+        """
+        Lists why fitted parameters (after extractQi) cannot describe a passive
+        resonator; an empty list means they can.
+
+        Quality factors must be positive and finite. Where the model has an
+        impedance-mismatch angle phi it must satisfy |phi| < pi/2, since the
+        mismatch-corrected Qc/cos(phi) is otherwise negative. A fit that fails
+        these (for instance a dip too shallow for the noise) can still report
+        small standard errors, so this is checked separately.
+        """
+        reasons = []
+        for name in ('Q', 'Qc', 'Qi'):
+            if name in params:
+                value = params[name].value
+                if not np.isfinite(value) or value <= 0:
+                    reasons.append(f'{name} = {value:.4g} is not positive')
+        if 'phi' in params and not abs(params['phi'].value) < np.pi/2:
+            reasons.append(f"|phi| = {abs(params['phi'].value):.3g} is not below pi/2")
+        return reasons
+
     def find_initial_guess_nonlinear(self, fdata: np.ndarray, sdata: np.ndarray) -> lmfit.Parameters:
         raise NotImplementedError(f"{type(self).__name__} has no nonlinear model")
 
