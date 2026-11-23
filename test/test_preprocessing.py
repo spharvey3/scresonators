@@ -140,3 +140,18 @@ def test_find_delay_survives_nan_linewidth_estimate():
     delay = Preprocessor(method).find_delay(freqs, s21)
 
     assert np.isfinite(delay)
+
+
+def test_find_off_res_point_without_delay_fit():
+    # with no delay fit theta_0 is unknown; find_off_res_point must fit it from
+    # the phase about the circle center and still find the off-resonant point
+    # (it used to crash in lmfit, and its raw-phase fit was wrong besides)
+    freqs = make_freqs()
+    background = 0.7 * np.exp(0.4j)
+    s21 = background * make_dcm_s21(freqs, phi=0.2)
+
+    preprocessor = Preprocessor(DCM())
+    assert preprocessor.theta_0 is None
+    off_res_point = preprocessor.find_off_res_point(freqs, s21)
+
+    assert off_res_point == approx(background, abs=1e-3)

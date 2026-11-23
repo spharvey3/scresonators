@@ -4,7 +4,7 @@ from scipy.ndimage import gaussian_filter
 from scipy.stats import linregress
 from scipy.interpolate import interp1d
 
-from .utils import remove_delay, find_circle, sloped_arctan, partitionFrequencyBand
+from .utils import remove_delay, find_circle, partitionFrequencyBand
 
 
 def _within(value, lo, hi, fallback):
@@ -19,6 +19,11 @@ def _within(value, lo, hi, fallback):
     if not np.isfinite(value):
         value = fallback
     return float(np.clip(value, lo, hi))
+
+
+def _principal_angle(angle):
+    """Wrap an angle to (-pi, pi]."""
+    return float(np.pi - np.mod(np.pi - angle, 2*np.pi))
 
 
 class Preprocessor:
@@ -214,26 +219,15 @@ class Preprocessor:
             # the resonance and inflates the linewidth estimate.
             guess_params = self.fit_method.find_initial_guess(fdata, remove_delay(fdata, sdata, delay_guess))
 
-        f_lo, f_hi = np.min(fdata), np.max(fdata)
         params = lmfit.Parameters()
         if self.Ql_guess is not None:
             params.add(name = 'Ql', value = self.Ql_guess, min=0.9*self.Ql_guess, max=1.1*self.Ql_guess)
             params['Ql'].vary = False
-        else:
-            # A linewidth estimate of zero (or a dip lost in the noise) gives an
-            # infinite or NaN Q; fall back to a Q whose linewidth is a tenth of
-            # the span.
-            Ql_fallback = 10 * 0.5 * (f_lo + f_hi) / (f_hi - f_lo)
-            params.add(name = 'Ql', value = _within(guess_params['Q'].value, *self.Ql_bounds, Ql_fallback),
-                       min=self.Ql_bounds[0], max=self.Ql_bounds[1])
         if self.fr_guess is not None:
             params.add(name = 'fr', value = self.fr_guess, min=0.99*self.fr_guess, max=1.01*self.fr_guess)
             params['fr'].vary = False
-        else:
-            # the resonance lies inside the measured band; bounding fr there
-            # (rather than at a fixed 1e10) also keeps data taken in Hz in bounds
-            params.add(name = 'fr', value = _within(guess_params['f0'].value, f_lo, f_hi, 0.5*(f_lo + f_hi)),
-                       min=f_lo, max=f_hi)
+        if self.Ql_guess is None or self.fr_guess is None:
+            self._add_free_Ql_fr(params, fdata, guess_params)
 
         if self.fit_theta and self.theta_0 is not None:
             params.add(name = 'delay', value = self.delay, vary=False)
@@ -251,19 +245,12 @@ class Preprocessor:
             # theta_0 costs nothing; it is wrapped to (-pi, pi] afterwards.
             params.add(name = 'theta_0', value = 0)
 
-        #running the minimizer several times also improves results
-        for _ in range(10):
-            min_result = lmfit.minimize(fcn=self.arctan_deviation, params=params, args=(fdata, sdata),
-                                    method='least_squares', max_nfev = 10000000)
-
-            params = min_result.params
-
-            #TODO: we should have a condition on the residuals to break this loop early
+        min_result = self._fit_offset_phase(params, fdata, sdata)
+        params = min_result.params
         electrical_delay = params['delay'].value
         self.Ql_guess = params['Ql'].value
         self.fr_guess = params['fr'].value
-        # report theta_0 on the principal branch (-pi, pi]
-        self.theta_0 = float(np.pi - np.mod(np.pi - params['theta_0'].value, 2*np.pi))
+        self.theta_0 = _principal_angle(params['theta_0'].value)
         if verbose:
             print(f'Fit delay. Chi sq: {min_result.redchi:.3g}, Q: {self.Ql_guess:.0f}, fr: {params["fr"].value:.4f}, theta_0: {self.theta_0:.4f}, delay: {electrical_delay:.4f}')
         self.delay_chi = min_result.redchi
@@ -272,6 +259,32 @@ class Preprocessor:
             self._plot_delay_fit(fdata, sdata, params, electrical_delay)
 
         return electrical_delay
+
+    def _add_free_Ql_fr(self, params, fdata, guess_params):
+        """Add whichever of Ql and fr params lacks, free, started from guess_params."""
+        f_lo, f_hi = np.min(fdata), np.max(fdata)
+        if 'Ql' not in params:
+            # A linewidth estimate of zero (or a dip lost in the noise) gives an
+            # infinite or NaN Q; fall back to a Q whose linewidth is a tenth of
+            # the span.
+            Ql_fallback = 10 * 0.5 * (f_lo + f_hi) / (f_hi - f_lo)
+            params.add(name = 'Ql', value = _within(guess_params['Q'].value, *self.Ql_bounds, Ql_fallback),
+                       min=self.Ql_bounds[0], max=self.Ql_bounds[1])
+        if 'fr' not in params:
+            # the resonance lies inside the measured band; bounding fr there
+            # (rather than at a fixed 1e10) also keeps data taken in Hz in bounds
+            params.add(name = 'fr', value = _within(guess_params['f0'].value, f_lo, f_hi, 0.5*(f_lo + f_hi)),
+                       min=f_lo, max=f_hi)
+
+    def _fit_offset_phase(self, params, fdata, sdata, rounds=10):
+        """Minimize arctan_deviation over params; returns the last lmfit MinimizerResult."""
+        #running the minimizer several times also improves results
+        for _ in range(rounds):
+            min_result = lmfit.minimize(fcn=self.arctan_deviation, params=params, args=(fdata, sdata),
+                                        method='least_squares', max_nfev = 10000000)
+            params = min_result.params
+            #TODO: we should have a condition on the residuals to break this loop early
+        return min_result
 
     def _plot_delay_fit(self, fdata, sdata, params, electrical_delay):
         """Plot the sloped arctan as a verification step."""
@@ -402,38 +415,30 @@ class Preprocessor:
             additionally sets self.phi
         """
         if self.theta_0 is not None:
-            beta = self.theta_0 + np.pi
-            xc, yc, r = find_circle(np.real(sdata), np.imag(sdata))
-            self.phi = np.pi - self.theta_0 + np.angle(xc+1j*yc)
-            if verbose:
-                print(f'Fit circle: Phi (preprocessing): {self.phi:0.3g}, theta_0: {self.theta_0:0.3g}, xc: {xc:0.3g}, yc: {yc:0.3g}')
-            off_res_point = xc+ 1j*yc+ r*np.exp(1j*beta)
-            if self.plot_diagnostics:
-                self._plot_circle_fit(sdata, xc, yc, r, off_res_point)
-
-            return off_res_point
+            theta_0 = self.theta_0
         else:
-            #this block is untested
-            #TODO: fit the offset phase to an arctan (without delay, that is not the place for this function)
-            orpmodel = lmfit.Model(sloped_arctan)
-            guess_params = self.fit_method.find_initial_guess(fdata, sdata)
+            # No delay fit ran (remove_delay or fit_delay off), so theta_0 is
+            # unknown. Fit it the same way find_delay does -- the phase of the
+            # data about the circle center against the arctan model -- with the
+            # delay held at zero, since run() has already removed any delay.
+            # (Fitting the raw phase of S21 instead is wrong: for a hanger the
+            # circle does not enclose the origin, so that phase never winds.)
+            params = lmfit.Parameters()
+            self._add_free_Ql_fr(params, fdata, self.fit_method.find_initial_guess(fdata, sdata))
+            params.add(name = 'delay', value = 0, vary = False)
+            params.add(name = 'theta_0', value = 0)
+            theta_0 = _principal_angle(self._fit_offset_phase(params, fdata, sdata).params['theta_0'].value)
 
-            orparams = lmfit.Parameters()
-            orparams.add(name = 'Ql', value = guess_params['Q'].value)
-            orparams.add(name = 'fr', value = guess_params['f0'].value)
-            orparams.add(name = 'delay', value = 0, vary = False)
-            orparams.add(name = 'theta_0', value = 0)
-            orparams.add(name = 'orientation', value = self.fit_method.phase_orientation, vary = False)
+        beta = theta_0 + np.pi
+        xc, yc, r = find_circle(np.real(sdata), np.imag(sdata))
+        self.phi = _principal_angle(np.pi - theta_0 + np.angle(xc+1j*yc))
+        if verbose:
+            print(f'Fit circle: Phi (preprocessing): {self.phi:0.3g}, theta_0: {theta_0:0.3g}, xc: {xc:0.3g}, yc: {yc:0.3g}')
+        off_res_point = xc+ 1j*yc+ r*np.exp(1j*beta)
+        if self.plot_diagnostics:
+            self._plot_circle_fit(sdata, xc, yc, r, off_res_point)
 
-            orp_results = orpmodel.fit(np.unwrap(np.angle(sdata)), orparams, f=fdata, fit_kws={'max_nfev': 10000000})
-            theta_0 = orp_results.params['theta_0'].value
-            # same geometry as the theta_0 branch above
-            beta = theta_0 + np.pi
-            xc, yc, r = find_circle(np.real(sdata), np.imag(sdata))
-            self.phi = np.pi - theta_0 + np.angle(xc + 1j * yc)
-            if verbose:
-                print(f'phi (preprocessing): {self.phi}')
-            return xc + 1j * yc + r * np.exp(1j * beta)
+        return off_res_point
 
     def _plot_circle_fit(self, sdata, xc, yc, r, off_res_point):
         import matplotlib.pyplot as plt

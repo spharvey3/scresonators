@@ -127,3 +127,25 @@ def test_dcm_deep_dip_sparse_with_delay():
 
     assert result['Q'].value == approx(Q, rel=0.02)
     assert result['f0'].value == approx(5.0, rel=1e-6)
+
+
+def test_dcm_fit_delay_false_uses_given_delay():
+    # fit_delay=False skips the delay fit, so theta_0 comes from the circle
+    # anchoring step; this path used to raise a TypeError inside lmfit
+    freqs, s21, Q = make_sparse_s21(Qc=2e5, Qi=4e5, phi=-0.4, npoints=201, span_linewidths=10)
+    s21 = 0.5*np.exp(-2j) * s21
+
+    result = fit_dcm(freqs, s21, fit_delay=False, delay_guess=70)
+
+    assert result['Q'].value == approx(Q, rel=0.01)
+    assert result['phi'].value == approx(-0.4, abs=0.01)
+
+
+def test_dcm_remove_delay_false():
+    freqs = make_freqs()
+    s21 = 0.7*np.exp(0.4j) * make_dcm_s21(freqs, phi=0.1)
+
+    result = fit_dcm(freqs, s21, remove_delay=False)
+
+    assert result['Q'].value == approx(QTOT, rel=0.01)
+    assert result['phi'].value == approx(0.1, abs=0.01)
