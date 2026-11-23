@@ -79,6 +79,7 @@ class Preprocessor:
         self.Ql_guess = None
         self.fr_guess = None
         self.delay_chi = 0
+        self.delay_converged = None
         self.sdata_predelay = None
 
     def run(self, fdata: np.ndarray, sdata: np.ndarray, verbose=False) -> np.ndarray:
@@ -235,15 +236,21 @@ class Preprocessor:
         else:
             # delay is a time (ns for GHz data), not an angle -- leave it unbounded
             params.add(name = 'delay', value = delay_guess)
-            # theta_0 is left unbounded. remove_delay rotates the whole circle by
-            # 2*pi*delay*f, so near fr a delay change d_tau moves theta_0 by
-            # 2*pi*fr*d_tau (31 rad/ns at 5 GHz): the two are nearly degenerate,
-            # and any finite bound on theta_0 caps how far the delay can move.
-            # A shallow dip, whose delay guess is the least accurate, then pins
-            # theta_0 at the bound and biases delay and Q. arctan_deviation
-            # already snaps the data to the model's 2*pi branch, so an unbounded
-            # theta_0 costs nothing; it is wrapped to (-pi, pi] afterwards.
-            params.add(name = 'theta_0', value = 0)
+            # remove_delay rotates the whole circle by 2*pi*delay*f, so near fr
+            # a delay change d_tau moves theta_0 by 2*pi*fr*d_tau (31 rad/ns at
+            # 5 GHz): varied directly, the two are nearly degenerate. A bound on
+            # theta_0 then caps how far the delay can move (biasing delay and Q
+            # for shallow dips), and without one the minimizer slides along the
+            # valley for minutes on a featureless trace. So vary theta_ref, the
+            # offset phase with the delay referenced to the band center f_ref:
+            # the constant part 2*pi*delay*f_ref of the rotation is rigid and
+            # goes into theta_0 exactly, leaving the delay only the phase slope
+            # across the band. arctan_deviation snaps the data to the model's
+            # 2*pi branch, so theta_ref needs no bounds; theta_0 is wrapped to
+            # (-pi, pi] afterwards.
+            f_ref = float(0.5*(np.min(fdata) + np.max(fdata)))
+            params.add(name = 'theta_ref', value = 0)
+            params.add(name = 'theta_0', expr = f'theta_ref + 2*pi*delay*{f_ref!r}')
 
         min_result = self._fit_offset_phase(params, fdata, sdata)
         params = min_result.params
@@ -276,15 +283,35 @@ class Preprocessor:
             params.add(name = 'fr', value = _within(guess_params['f0'].value, f_lo, f_hi, 0.5*(f_lo + f_hi)),
                        min=f_lo, max=f_hi)
 
+    #: cap on objective evaluations per minimizer round in the delay and
+    #: offset-phase fits, per varied parameter; well-posed delay fits take
+    #: 40-160 evaluations in all (cap 800 for four parameters), and a
+    #: featureless trace must fail fast rather than run for minutes
+    max_nfev_per_param = 200
+
     def _fit_offset_phase(self, params, fdata, sdata, rounds=10):
-        """Minimize arctan_deviation over params; returns the last lmfit MinimizerResult."""
-        #running the minimizer several times also improves results
+        """
+        Minimize arctan_deviation over params; returns the best lmfit MinimizerResult.
+
+        Restarting the minimizer improves results, so it runs up to `rounds`
+        times, stopping once a round no longer lowers chi-square. Each round is
+        capped at max_nfev_per_param evaluations per varied parameter. Sets
+        self.delay_converged to whether the last round converged within its cap.
+        """
+        n_vary = sum(1 for p in params.values() if p.vary and not p.expr)
+        best = None
         for _ in range(rounds):
             min_result = lmfit.minimize(fcn=self.arctan_deviation, params=params, args=(fdata, sdata),
-                                        method='least_squares', max_nfev = 10000000)
+                                        method='least_squares',
+                                        max_nfev=self.max_nfev_per_param*max(n_vary, 1))
+            improved = best is None or min_result.chisqr < best.chisqr*(1 - 1e-9)
+            if best is None or min_result.chisqr <= best.chisqr:
+                best = min_result
             params = min_result.params
-            #TODO: we should have a condition on the residuals to break this loop early
-        return min_result
+            if not improved or not min_result.success:
+                break
+        self.delay_converged = bool(min_result.success)
+        return best
 
     def _plot_delay_fit(self, fdata, sdata, params, electrical_delay):
         """Plot the sloped arctan as a verification step."""

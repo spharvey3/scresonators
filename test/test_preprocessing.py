@@ -155,3 +155,70 @@ def test_find_off_res_point_without_delay_fit():
     off_res_point = preprocessor.find_off_res_point(freqs, s21)
 
     assert off_res_point == approx(background, abs=1e-3)
+
+
+def make_featureless_s21(seed, noise=1e-3, delay=50):
+    """No resonance: cable delay and complex Gaussian noise only."""
+    rng = np.random.default_rng(seed)
+    freqs = np.linspace(5.0, 5.001, 401)
+    s21 = np.exp(-2j*np.pi*freqs*delay) * (1 + noise*(rng.normal(size=401) + 1j*rng.normal(size=401)))
+    return freqs, s21
+
+
+def count_arctan_evaluations(preprocessor, limit):
+    """Count arctan_deviation calls, failing fast once they pass limit."""
+    count = [0]
+    objective = preprocessor.arctan_deviation
+
+    def counted(*args):
+        count[0] += 1
+        assert count[0] <= limit, f"delay fit passed {limit} objective evaluations"
+        return objective(*args)
+
+    preprocessor.arctan_deviation = counted
+    return count
+
+
+def test_find_delay_featureless_trace_finishes():
+    # with theta_0 and delay varied directly the minimizer slid along their
+    # degenerate valley on this trace for minutes (>1e4 evaluations); with the
+    # delay referenced to the band center it converges in a few hundred
+    freqs, s21 = make_featureless_s21(seed=7)
+    preprocessor = Preprocessor(DCM())
+    count = count_arctan_evaluations(preprocessor, limit=2000)
+
+    preprocessor.find_delay(freqs, s21)
+
+    assert preprocessor.delay_converged
+    assert count[0] < 2000
+
+
+def test_find_delay_evaluation_cap():
+    # a trace on which the delay fit does not converge stops at the cap and says so
+    freqs, s21 = make_featureless_s21(seed=15)
+    preprocessor = Preprocessor(DCM())
+    n_vary = 4  # Ql, fr, delay, theta_ref
+    count = count_arctan_evaluations(preprocessor, limit=10*n_vary*preprocessor.max_nfev_per_param)
+
+    delay = preprocessor.find_delay(freqs, s21)
+
+    assert np.isfinite(delay)
+    assert preprocessor.delay_converged is False
+    assert count[0] <= n_vary*preprocessor.max_nfev_per_param + 5
+
+
+def test_find_delay_theta_0_matches_full_band_convention():
+    # theta_0 is fitted relative to the band center but must be reported for
+    # the delay removed over the full frequencies, where off-resonant anchoring
+    # uses it: about the circle center, S21 has phase
+    # theta_0 + 2*arctan(2*Ql*(1 - f/fr)) with the delay removed over the full f
+    freqs, s21 = make_shallow_s21()
+    preprocessor = Preprocessor(DCM())
+    delay = preprocessor.find_delay(freqs, s21)
+
+    from src.utils import remove_delay, find_circle
+    corrected = remove_delay(freqs, s21, delay)
+    xc, yc, _ = find_circle(corrected.real, corrected.imag)
+    model = preprocessor.theta_0 + 2*np.arctan(2*preprocessor.Ql_guess*(1 - freqs/preprocessor.fr_guess))
+    deviation = np.angle((corrected - (xc + 1j*yc))*np.exp(-1j*model))
+    assert np.max(np.abs(deviation)) < 0.01
